@@ -1,10 +1,11 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { Pencil, Move, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ComposedChart, Line, Bar, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea, ReferenceLine } from 'recharts';
 
 import { getKlineData, getStockInfo, getStockList, calcMA, calcMACD, calcRSI, calcKDJ, calcBOLL, calcCCI, calcWR, generateSignals, getTrend } from '../data/mockData';
 import { calcSupportResistance, calcIndicatorScore, analyzeDaily } from '../data/analysisEngine';
+import { buildStrategyPlan } from '../data/strategyEngine';
 
 type Indicator = 'ma' | 'macd' | 'rsi' | 'kdj' | 'boll' | 'cci' | 'wr';
 type Period = 30 | 60 | 120 | 250 | 'all';
@@ -47,15 +48,24 @@ export default function Analysis() {
   const sr = useMemo(() => calcSupportResistance(kline), [kline]);
   const score = useMemo(() => calcIndicatorScore(kline), [kline]);
   const daily = useMemo(() => analyzeDaily(kline), [kline]);
+  const plan = useMemo(() => buildStrategyPlan(code, info.name), [code, info.name]);
 
   // 构建图表数据
-  const chartData = useMemo(() => kline.map((d, i) => ({
-    ...d, ma5: calc.ma5[i], ma10: calc.ma10[i], ma20: calc.ma20[i], ma60: calc.ma60[i],
-    dif: calc.macd.dif[i], dea: calc.macd.dea[i], macd: calc.macd.macd[i],
-    rsi: calc.rsi[i], k: calc.kdj.k[i], d: calc.kdj.d[i], j: calc.kdj.j[i],
-    bollUpper: calc.boll.upper[i], bollMid: calc.boll.mid[i], bollLower: calc.boll.lower[i],
-    cci: calc.cci[i], wr: calc.wr[i],
-  })), [kline, calc]);
+  const chartData = useMemo(() => {
+    const signalMap = new Map(signals.map(s => [s.date, s]));
+    return kline.map((d, i) => {
+      const sig = signalMap.get(d.date);
+      return {
+        ...d, ma5: calc.ma5[i], ma10: calc.ma10[i], ma20: calc.ma20[i], ma60: calc.ma60[i],
+        dif: calc.macd.dif[i], dea: calc.macd.dea[i], macd: calc.macd.macd[i],
+        rsi: calc.rsi[i], k: calc.kdj.k[i], d: calc.kdj.d[i], j: calc.kdj.j[i],
+        bollUpper: calc.boll.upper[i], bollMid: calc.boll.mid[i], bollLower: calc.boll.lower[i],
+        cci: calc.cci[i], wr: calc.wr[i],
+        buySignal: sig?.type === 'buy' ? d.low * 0.985 : null,
+        sellSignal: sig?.type === 'sell' ? d.high * 1.015 : null,
+      };
+    });
+  }, [kline, calc, signals]);
 
   const latest = kline[kline.length - 1];
   const prev = kline[kline.length - 2];
@@ -176,6 +186,12 @@ export default function Analysis() {
                   <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#2a2f3f' }} tickFormatter={v => v.slice(5)} />
                   <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#2a2f3f' }} domain={['auto', 'auto']} width={50} />
                   <Tooltip contentStyle={{ background: '#1a1d29', border: '1px solid #2a2f3f', borderRadius: '6px', fontSize: '11px', color: '#d1d5db' }} />
+                  <ReferenceArea y1={plan.entryZone.low} y2={plan.entryZone.high} fill="#22c55e" fillOpacity={0.06} />
+                  <ReferenceArea y1={plan.target1} y2={plan.target2} fill="#3b82f6" fillOpacity={0.05} />
+                  <ReferenceLine y={plan.entryZone.low} stroke="#22c55e" strokeDasharray="6 4" strokeOpacity={0.55} />
+                  <ReferenceLine y={plan.entryZone.high} stroke="#22c55e" strokeDasharray="6 4" strokeOpacity={0.55} />
+                  <ReferenceLine y={plan.stopLoss} stroke="#ef4444" strokeDasharray="4 4" strokeOpacity={0.75} />
+                  <ReferenceLine y={plan.target1} stroke="#3b82f6" strokeDasharray="4 4" strokeOpacity={0.75} />
 
                   {fibLevels.map((level, i) => (
                     <ReferenceLine key={`fib-${i}`} y={level} stroke="#f59e0b" strokeDasharray="4 4" strokeOpacity={0.5} />
@@ -196,6 +212,8 @@ export default function Analysis() {
 
                   <Bar dataKey="volume" fill="#2a2f3f" fillOpacity={0.3} yAxisId="vol" />
                   <Line type="monotone" dataKey="close" stroke={changePct >= 0 ? '#ef4444' : '#22c55e'} strokeWidth={1.5} dot={false} name="收盘价" />
+                  <Scatter dataKey="buySignal" fill="#ef4444" shape="triangle" name="买点" />
+                  <Scatter dataKey="sellSignal" fill="#22c55e" shape="triangle" name="卖点" />
                   <YAxis yAxisId="vol" orientation="right" hide domain={[0, 'auto']} />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -250,6 +268,67 @@ export default function Analysis() {
             </div>
           ) : (
             <div className="space-y-3">
+              {/* 今日交易计划 */}
+              <div className={`panel p-3 border ${plan.action === 'exit' || plan.action === 'reduce' ? 'border-t-green/40' : plan.bias === 'bullish' ? 'border-t-red/40' : 'border-t-yellow/40'}`}>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-t-textBright">今日交易计划</h3>
+                    <p className="text-[11px] text-t-textDim mt-0.5">{plan.summary}</p>
+                  </div>
+                  <span className={`px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap ${plan.bias === 'bullish' ? 'bg-t-red/15 text-t-red' : plan.bias === 'bearish' ? 'bg-t-green/15 text-t-green' : 'bg-t-yellow/15 text-t-yellow'}`}>
+                    {plan.actionText}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-[10px] mb-3">
+                  <div className="bg-white/[0.03] rounded p-2">
+                    <div className="text-t-textDim">置信度</div>
+                    <div className="text-t-blue font-bold data-num text-sm">{plan.confidence}%</div>
+                  </div>
+                  <div className="bg-white/[0.03] rounded p-2">
+                    <div className="text-t-textDim">盈亏比</div>
+                    <div className={`font-bold data-num text-sm ${plan.riskReward >= 1.5 ? 'text-t-red' : 'text-t-yellow'}`}>{plan.riskReward}</div>
+                  </div>
+                  <div className="bg-white/[0.03] rounded p-2">
+                    <div className="text-t-textDim">风险</div>
+                    <div className="text-t-green font-bold data-num text-sm">{plan.riskPct}%</div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-t-textDim">{plan.entryZone.label}</span>
+                    <span className="data-num text-t-green font-medium">{plan.entryZone.low}~{plan.entryZone.high}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-t-textDim">{plan.addZone.label}</span>
+                    <span className="data-num text-t-blue font-medium">{plan.addZone.low}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-t-textDim">止损 / 目标</span>
+                    <span className="data-num text-t-textBright">{plan.stopLoss} / {plan.target1}</span>
+                  </div>
+                  <div className="pt-1 text-[11px] text-t-textSecondary leading-relaxed">{plan.positionSize}</div>
+                </div>
+              </div>
+
+              {/* 条件剧本 */}
+              <div className="panel p-3">
+                <h3 className="text-sm font-semibold text-t-textBright mb-2">走势剧本</h3>
+                <div className="space-y-2">
+                  {plan.scenarios.map(s => (
+                    <div key={s.name} className="border border-t-border rounded p-2 bg-white/[0.02]">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-t-text">{s.name}</span>
+                        <span className="text-[10px] text-t-textDim data-num">{s.probability}%</span>
+                      </div>
+                      <p className="text-[11px] text-t-textDim leading-relaxed">{s.condition}</p>
+                      <p className="text-[11px] text-t-textSecondary leading-relaxed mt-1">{s.action}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* 波段策略 - 综合评分 */}
               <div className="panel p-3">
                 <h3 className="text-sm font-semibold text-t-textBright mb-2">中期波段策略</h3>
@@ -380,6 +459,24 @@ export default function Analysis() {
                 </div>
               </div>
 
+              {/* 策略触发价 */}
+              <div className="panel p-3">
+                <h3 className="text-sm font-semibold text-t-textBright mb-2">飞书触发价</h3>
+                <div className="space-y-1.5">
+                  {plan.triggers.map(t => (
+                    <div key={t.label} className="flex items-start justify-between gap-2 text-xs">
+                      <div className="min-w-0">
+                        <div className={`font-medium ${t.severity === 'danger' ? 'text-t-green' : t.severity === 'warning' ? 'text-t-yellow' : 'text-t-blue'}`}>{t.label}</div>
+                        <div className="text-[10px] text-t-textDim truncate">{t.message}</div>
+                      </div>
+                      <span className="data-num text-t-textBright whitespace-nowrap">
+                        {t.direction === 'above' ? '>' : '<'} {t.price}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* 信号统计 */}
               <div className="panel p-3">
                 <h3 className="text-sm font-semibold text-t-textBright mb-2">信号统计</h3>
@@ -394,6 +491,20 @@ export default function Analysis() {
                     </div>
                   </>;
                 })()}
+              </div>
+
+              {/* 回测参考 */}
+              <div className="panel p-3">
+                <h3 className="text-sm font-semibold text-t-textBright mb-2">回测参考</h3>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="flex justify-between"><span className="text-t-textDim">样本</span><span className="data-num text-t-text">{plan.backtest.sampleSize}</span></div>
+                  <div className="flex justify-between"><span className="text-t-textDim">胜率</span><span className="data-num text-t-red">{plan.backtest.winRate}%</span></div>
+                  <div className="flex justify-between"><span className="text-t-textDim">平均收益</span><span className={`data-num ${plan.backtest.avgReturn >= 0 ? 'text-t-red' : 'text-t-green'}`}>{plan.backtest.avgReturn}%</span></div>
+                  <div className="flex justify-between"><span className="text-t-textDim">平均持仓</span><span className="data-num text-t-text">{plan.backtest.avgHoldingDays}天</span></div>
+                  <div className="flex justify-between"><span className="text-t-textDim">最好</span><span className="data-num text-t-red">{plan.backtest.bestReturn}%</span></div>
+                  <div className="flex justify-between"><span className="text-t-textDim">最差</span><span className="data-num text-t-green">{plan.backtest.worstReturn}%</span></div>
+                </div>
+                <p className="text-[10px] text-t-textDim mt-2 leading-relaxed">回测只衡量历史技术信号表现，用来过滤低质量信号，不等同未来收益承诺。</p>
               </div>
             </div>
           )}

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/feishu-cron?type=morning",
+      "schedule": "0 1 * * 1-5"
+    }
+  ]
+}

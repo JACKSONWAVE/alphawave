@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Send, Save, BookOpen, Plus, Trash2, Bell, Play, Square } from 'lucide-react';
+import { Send, Save, BookOpen, Plus, Bell, Play, Square, Cloud } from 'lucide-react';
 import { getStockList } from '../data/mockData';
 import { saveFeishuConfig, getFeishuConfig, generateMorningReport, sendToFeishu, startAutoPush, stopAutoPush, FEISHU_GUIDE } from '../components/FeishuBot';
 import type { FeishuConfig } from '../components/FeishuBot';
@@ -74,6 +74,17 @@ export default function FeishuSettings() {
         </div>
       )}
 
+      <div className="panel p-4 border-t-blue/30 bg-t-blue/5">
+        <h2 className="text-sm font-semibold text-t-textBright mb-2 flex items-center gap-2">
+          <Cloud className="w-4 h-4 text-t-blue" /> 云端自动推送
+        </h2>
+        <p className="text-xs text-t-textSecondary leading-relaxed">
+          已新增 Vercel 定时接口 <span className="data-num text-t-blue">/api/feishu-cron?type=morning</span>。
+          部署后只要在 Vercel 环境变量里配置 FEISHU_WEBHOOK、FEISHU_WATCHLIST、CRON_SECRET，
+          早盘策略会由云端自动发送，不需要保持网页打开。
+        </p>
+      </div>
+
       {/* Webhook */}
       <div className="panel p-4">
         <h2 className="text-sm font-semibold text-t-textBright mb-3">Webhook 配置</h2>
@@ -117,7 +128,7 @@ export default function FeishuSettings() {
             <div>
               <span className="text-t-text font-medium">盘前策略报告</span>
               <span className="text-t-textDim ml-2">{pushTime} 推送</span>
-              <p className="text-t-textDim mt-0.5">每只关注股票的支撑位/压力位/目标价/止损位 + 综合评分 + 波段买卖策略</p>
+              <p className="text-t-textDim mt-0.5">今日动作、买区、突破线、止损、目标、盈亏比、仓位建议和走势剧本</p>
             </div>
           </div>
           <div className="flex items-start gap-2">
@@ -125,7 +136,7 @@ export default function FeishuSettings() {
             <div>
               <span className="text-t-text font-medium">盘中信号提醒</span>
               <span className="text-t-textDim ml-2">交易时间自动检查</span>
-              <p className="text-t-textDim mt-0.5">只在出现强烈看多/看空信号时推送，不骚扰</p>
+              <p className="text-t-textDim mt-0.5">突破压力、回踩买区、跌破止损、接近止盈时触发</p>
             </div>
           </div>
           <div className="flex items-start gap-2">
@@ -133,7 +144,7 @@ export default function FeishuSettings() {
             <div>
               <span className="text-t-text font-medium">收盘总结</span>
               <span className="text-t-textDim ml-2">15:05 推送</span>
-              <p className="text-t-textDim mt-0.5">当日涨跌汇总 + 明日关注重点</p>
+              <p className="text-t-textDim mt-0.5">当日状态、次日关键价、飞书触发价和策略回测参考</p>
             </div>
           </div>
         </div>
