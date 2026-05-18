@@ -4,12 +4,22 @@ import { getStockList } from '../data/mockData';
 import { saveFeishuConfig, getFeishuConfig, generateMorningReport, sendToFeishu, startAutoPush, stopAutoPush, FEISHU_GUIDE } from '../components/FeishuBot';
 import type { FeishuConfig } from '../components/FeishuBot';
 
+function getLocalWatchCodes() {
+  try {
+    const items = JSON.parse(localStorage.getItem('watchlist') || '[]') as Array<{ code: string }>;
+    return items.map(item => item.code).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export default function FeishuSettings() {
   const stocks = getStockList();
   const existing = getFeishuConfig();
+  const localWatchCodes = getLocalWatchCodes();
 
   const [webhook, setWebhook] = useState(existing?.webhook || '');
-  const [watchList, setWatchList] = useState<string[]>(existing?.watchList || ['603019.SH', '002594.SZ', '600519.SH']);
+  const [watchList, setWatchList] = useState<string[]>(existing?.watchList || (localWatchCodes.length ? localWatchCodes : ['603019.SH', '002594.SZ', '600519.SH']));
   const [pushTime, setPushTime] = useState(existing?.pushTime || '09:00');
   const [showGuide, setShowGuide] = useState(false);
   const [status, setStatus] = useState('');
@@ -20,7 +30,19 @@ export default function FeishuSettings() {
   const saveConfig = () => {
     const config: FeishuConfig = { webhook, watchList, pushTime, pushType: 'morning' };
     saveFeishuConfig(config);
+    window.dispatchEvent(new CustomEvent('alphawave:settings-changed', { detail: { feishu: true } }));
     setStatus('配置已保存');
+    setTimeout(() => setStatus(''), 2000);
+  };
+
+  const syncWatchlist = () => {
+    const next = getLocalWatchCodes();
+    if (next.length === 0) {
+      setStatus('自选股为空，未同步');
+      return;
+    }
+    setWatchList(next);
+    setStatus(`已同步 ${next.length} 只自选股`);
     setTimeout(() => setStatus(''), 2000);
   };
 
@@ -163,6 +185,9 @@ export default function FeishuSettings() {
       <div className="flex flex-wrap gap-3">
         <button onClick={saveConfig} className="px-4 py-2 rounded bg-t-blue text-white text-sm hover:bg-blue-500 flex items-center gap-2">
           <Save className="w-4 h-4" /> 保存配置
+        </button>
+        <button onClick={syncWatchlist} className="px-4 py-2 rounded border border-t-border text-t-textDim text-sm hover:text-t-text flex items-center gap-2">
+          <Bell className="w-4 h-4" /> 同步自选股
         </button>
         <button onClick={doPush} className="px-4 py-2 rounded bg-t-green text-white text-sm hover:bg-green-600 flex items-center gap-2">
           <Send className="w-4 h-4" /> 立即推送测试

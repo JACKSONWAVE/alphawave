@@ -74,6 +74,7 @@ export function getUserInterval(): number {
 
 export function setUserInterval(seconds: number) {
   localStorage.setItem(INTERVAL_KEY, String(seconds));
+  window.dispatchEvent(new CustomEvent('alphawave:settings-changed', { detail: { refreshInterval: seconds } }));
 }
 
 export function getIntervalPresets() { return INTERVAL_PRESETS; }

@@ -3,6 +3,7 @@ import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Percent } from 'luc
 import { getKlineData, getStockList } from '../data/mockData';
 import type { TradeRecord } from '../data/mockData';
 import { calcIndicatorScore } from '../data/analysisEngine';
+import { calcTradeFee } from '../data/appSettings';
 import { buildMarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
@@ -20,7 +21,7 @@ export default function Trades() {
     const stock = stockList.find(s => s.code === form.code);
     const price = parseFloat(form.price);
     const shares = parseInt(form.shares);
-    const fee = price * shares * 0.0005;
+    const fee = calcTradeFee(price, shares, form.type);
     setTrades(prev => [...prev, {
       id: Date.now().toString(), code: form.code, name: stock?.name || form.code,
       type: form.type, price, shares, date: form.date, fee, note: form.note,

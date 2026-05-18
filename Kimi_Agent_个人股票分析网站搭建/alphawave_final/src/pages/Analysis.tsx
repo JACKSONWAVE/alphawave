@@ -23,6 +23,7 @@ import { buildBacktestSuite, type StrategyBacktestResult } from '../data/backtes
 import { buildIntradayStrategy, type IntradayStrategy } from '../data/intradayStrategy';
 import { buildMarketContext, type MarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
+import { getAppSettings } from '../data/appSettings';
 import { fetchIntradayMinutes } from '../data/realtimeApi';
 import { intradayToKline, mergeRealtimeQuoteIntoKline, type IntradayPoint } from '../data/realtimeKline';
 import { buildStrategyPlan, type StrategyPlan } from '../data/strategyEngine';
@@ -56,10 +57,11 @@ const periods: Array<{ value: Period; label: string }> = [
 
 export default function Analysis() {
   const [searchParams] = useSearchParams();
+  const appSettings = getAppSettings();
   const defaultCode = searchParams.get('code') || '603019.SH';
   const [code, setCode] = useState(defaultCode);
-  const [period, setPeriod] = useState<Period>(120);
-  const [indicators, setIndicators] = useState<Indicator[]>(['ma', 'macd', 'cci']);
+  const [period, setPeriod] = useState<Period>((Number(appSettings.defaultPeriod) || 120) as Period);
+  const [indicators, setIndicators] = useState<Indicator[]>(appSettings.defaultIndicators as Indicator[]);
   const [sideTab, setSideTab] = useState<SideTab>('plan');
   const [showSignals, setShowSignals] = useState(() => localStorage.getItem('analysis_show_signals') !== '0');
   const [chartMode, setChartMode] = useState<'candle' | 'line'>('candle');

@@ -110,7 +110,10 @@ export function getTrend(data: KlineData[]) { if (data.length < 60) return { tre
 // ── 预警 ──
 export interface AlertRule { id: string; code: string; name: string; type: 'above' | 'below'; price: number; enabled: boolean; }
 export function getAlerts(): AlertRule[] { try { return JSON.parse(localStorage.getItem('alerts') || '[]'); } catch { return []; } }
-export function saveAlerts(a: AlertRule[]) { localStorage.setItem('alerts', JSON.stringify(a)); }
+export function saveAlerts(a: AlertRule[]) {
+  localStorage.setItem('alerts', JSON.stringify(a));
+  window.dispatchEvent(new CustomEvent('alphawave:alerts-changed'));
+}
 
 // ── 交易记录类型 ──
 export interface TradeRecord { id: string; code: string; name: string; type: 'buy' | 'sell'; price: number; shares: number; date: string; fee: number; note: string; }

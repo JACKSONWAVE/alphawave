@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Plus, Trash2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Bell, BellOff } from 'lucide-react';
-import { getStockList } from '../data/mockData';
+import { getAlerts, getStockList, saveAlerts } from '../data/mockData';
 import { formatPct, formatPrice } from '../data/price';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useRealtimeQuotes } from '../hooks/useRealtime';
 
 interface WatchItem {
   code: string; group: string; note: string; alertPrice?: number; alertEnabled: boolean;
@@ -30,6 +31,8 @@ export default function Watchlist() {
 
   const groups = ['全部', ...Array.from(new Set(watchlist.map(w => w.group)))];
   const filtered = selectedGroup === '全部' ? watchlist : watchlist.filter(w => w.group === selectedGroup);
+  const { quotes } = useRealtimeQuotes({ codes: watchlist.map(w => w.code) });
+  const quoteMap = new Map(quotes.map(quote => [quote.code, quote]));
 
   const addStock = () => {
     if (!newCode) return;
@@ -41,7 +44,30 @@ export default function Watchlist() {
   };
 
   const removeStock = (code: string) => setWatchlist(prev => prev.filter(w => w.code !== code));
-  const toggleAlert = (code: string) => setWatchlist(prev => prev.map(w => w.code === code ? { ...w, alertEnabled: !w.alertEnabled } : w));
+  const toggleAlert = (code: string) => {
+    const item = watchlist.find(w => w.code === code);
+    if (!item) return;
+    const nextEnabled = !item.alertEnabled;
+    setWatchlist(prev => prev.map(w => w.code === code ? { ...w, alertEnabled: nextEnabled } : w));
+
+    const stock = stockList.find(s => s.code === code);
+    const currentPrice = quoteMap.get(code)?.price ?? stock?.price ?? item.alertPrice ?? 0;
+    const alerts = getAlerts();
+    const watchAlertId = `watchlist-${code}`;
+    const withoutExisting = alerts.filter(alert => alert.id !== watchAlertId);
+    const nextAlerts = nextEnabled
+      ? [...withoutExisting, {
+        id: watchAlertId,
+        code,
+        name: stock?.name || code,
+        type: 'above' as const,
+        price: item.alertPrice || +(currentPrice * 1.03).toFixed(3),
+        enabled: true,
+      }]
+      : withoutExisting;
+    saveAlerts(nextAlerts);
+    window.dispatchEvent(new CustomEvent('alphawave:alerts-changed'));
+  };
 
   return (
     <div className="space-y-3">
@@ -100,7 +126,11 @@ export default function Watchlist() {
               {filtered.map((w, i) => {
                 const stock = stockList.find(s => s.code === w.code);
                 if (!stock) return null;
-                const up = stock.changePct >= 0;
+                const realtime = quoteMap.get(w.code);
+                const price = realtime?.price ?? stock.price;
+                const change = realtime?.change ?? stock.change;
+                const changePct = realtime?.changePct ?? stock.changePct;
+                const up = changePct >= 0;
                 return (
                   <tr key={w.code} className={`border-b border-t-border/50 ${i % 2 === 1 ? 'bg-white/[0.02]' : ''} hover:bg-white/[0.04] transition-colors`}>
                     <td className="px-3 py-2">
@@ -110,9 +140,9 @@ export default function Watchlist() {
                     <td className="py-2">
                       <Link to={`/analysis?code=${w.code}`} className="text-t-text hover:text-t-blue font-medium transition-colors">{stock.name}</Link>
                     </td>
-                    <td className={`py-2 text-right font-bold data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPrice(stock.price)}</td>
-                    <td className={`py-2 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPrice(stock.change)}</td>
-                    <td className={`py-2 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPct(stock.changePct)}</td>
+                    <td className={`py-2 text-right font-bold data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPrice(price)}</td>
+                    <td className={`py-2 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPrice(change)}</td>
+                    <td className={`py-2 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPct(changePct)}</td>
                     <td className="py-2 text-t-textDim hidden md:table-cell">{w.note}</td>
                     <td className="py-2 text-right">
                       <button onClick={() => toggleAlert(w.code)} className={`${w.alertEnabled ? 'text-t-yellow' : 'text-t-textDim'} hover:text-t-yellow transition-colors`}>
