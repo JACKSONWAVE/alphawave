@@ -261,6 +261,17 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
 }) {
   const baseIndex = Math.max(0, kline.length - 60);
   const change60 = kline[baseIndex]?.close ? (latest.close - kline[baseIndex].close) / kline[baseIndex].close * 100 : 0;
+  const inEntryZone = latest.close >= plan.entryZone.low && latest.close <= plan.entryZone.high;
+  const breakoutConfirmed = latest.close >= plan.addZone.low;
+  const riskDistance = latest.close ? Math.max(0, (latest.close - plan.stopLoss) / latest.close * 100) : 0;
+  const executionScore = [
+    inEntryZone || breakoutConfirmed,
+    plan.riskReward >= 1.5,
+    score.overall >= 15,
+    riskDistance > 0 && riskDistance <= 9,
+  ].filter(Boolean).length;
+  const executionText = executionScore >= 3 ? '允许小仓试错' : executionScore === 2 ? '只做观察，不追价' : '等待更清晰机会';
+  const executionColor = executionScore >= 3 ? 'text-t-red' : executionScore === 2 ? 'text-t-yellow' : 'text-t-green';
   return (
     <div className="space-y-3">
       <div className={`panel p-3 border ${plan.action === 'exit' || plan.action === 'reduce' ? 'border-t-green/40' : plan.bias === 'bullish' ? 'border-t-red/40' : 'border-t-yellow/40'}`}>
@@ -283,6 +294,22 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
           <Row label={plan.addZone.label} value={formatPrice(plan.addZone.low)} color="text-t-blue" />
           <Row label="止损 / 目标" value={`${formatPrice(plan.stopLoss)} / ${formatPrice(plan.target1)}`} color="text-t-textBright" />
           <div className="pt-1 text-[11px] text-t-textSecondary leading-relaxed">{plan.positionSize}</div>
+        </div>
+      </div>
+
+      <div className="panel p-3 border border-t-blue/20">
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div>
+            <h3 className="text-sm font-semibold text-t-textBright">交易执行闸门</h3>
+            <p className="text-[11px] text-t-textDim mt-0.5">先过条件，再谈买卖，避免情绪追高。</p>
+          </div>
+          <span className={`text-xs font-bold ${executionColor}`}>{executionText}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+          <Gate label="价格位置" passed={inEntryZone || breakoutConfirmed} text={inEntryZone ? '在计划区' : breakoutConfirmed ? '突破确认' : '未到买点'} />
+          <Gate label="盈亏比" passed={plan.riskReward >= 1.5} text={String(plan.riskReward)} />
+          <Gate label="趋势分" passed={score.overall >= 15} text={String(score.overall)} />
+          <Gate label="止损距离" passed={riskDistance > 0 && riskDistance <= 9} text={`${riskDistance.toFixed(1)}%`} />
         </div>
       </div>
 
@@ -386,6 +413,15 @@ function SignalsPanel({ signals }: { signals: ReturnType<typeof generateSignals>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function Gate({ label, passed, text }: { label: string; passed: boolean; text: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-t-textDim">{label}</span>
+      <span className={`${passed ? 'text-t-red' : 'text-t-textDim'} font-medium data-num`}>{text}</span>
     </div>
   );
 }

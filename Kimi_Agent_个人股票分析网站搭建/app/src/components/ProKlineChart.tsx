@@ -85,6 +85,19 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
     setCursorGlobalIndex(clamp(cursorGlobalIndex, 0, data.length - 1));
   }, [cursorGlobalIndex, data.length]);
 
+  useEffect(() => {
+    if (!crosshairLocked) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && wrapRef.current?.contains(target)) return;
+      setCrosshairLocked(false);
+      setCursorGlobalIndex(null);
+      setHoverIndex(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [crosshairLocked]);
+
   const height = 430;
   const top = 18;
   const priceHeight = 328;
@@ -163,16 +176,30 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
     return hoverIndex;
   }, [crosshairLocked, cursorGlobalIndex, view, hoverIndex]);
 
-  const hover = activeLocalIndex === null ? null : view[activeLocalIndex];
+  const hover = crosshairLocked && activeLocalIndex !== null ? view[activeLocalIndex] : null;
   const priceTicks = Array.from({ length: 6 }, (_, index) => priceRange.min + (priceRange.max - priceRange.min) * index / 5).reverse();
   const xTicks = view.filter((_, index) => index % Math.max(1, Math.floor(view.length / 8)) === 0);
 
   const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
     if (!crosshairLocked) return;
     event.preventDefault();
+    event.stopPropagation();
     const direction = event.deltaY > 0 ? 1 : -1;
     setVisibleCount(count => clamp(count + direction * Math.ceil(count * 0.12), 40, Math.max(40, data.length)));
   };
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || !crosshairLocked) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const direction = event.deltaY > 0 ? 1 : -1;
+      setVisibleCount(count => clamp(count + direction * Math.ceil(count * 0.12), 40, Math.max(40, data.length)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false, capture: true });
+    return () => el.removeEventListener('wheel', onWheel, { capture: true });
+  }, [crosshairLocked, data.length]);
 
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     dragRef.current = { x: event.clientX, end: endIndex };
