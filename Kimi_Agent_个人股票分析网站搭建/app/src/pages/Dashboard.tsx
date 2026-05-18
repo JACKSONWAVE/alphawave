@@ -16,12 +16,14 @@ import {
   Target,
 } from 'lucide-react';
 
-import { calcMA, getKlineData, getMarketIndex, getStockList, getTrend } from '../data/mockData';
+import { calcMA, getKlineData, getMarketIndex, getStockList, getTrend, type TradeRecord } from '../data/mockData';
 import { calcIndicatorScore, calcSupportResistance } from '../data/analysisEngine';
 import { buildMarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
+import { buildHoldingAdvice, buildHoldingPositions, buildTradeGuard, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import RealtimeStatus from '../components/RealtimeStatus';
 
 type DeskLane = '可试错' | '持仓观察' | '风险减仓' | '等待回踩';
@@ -119,10 +121,12 @@ export default function Dashboard() {
   const indexData = getMarketIndex();
   const staticStocks = getStockList();
   const { quotes: realtimeQuotes, loading, refresh } = useRealtimeQuotes({});
+  const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
   const [activeLane, setActiveLane] = useState<DeskLane | '全部'>('全部');
   const [selectedCode, setSelectedCode] = useState(staticStocks[0]?.code || '603019.SH');
 
   const deskStocks = useMemo(() => buildDeskStocks(staticStocks, realtimeQuotes), [staticStocks, realtimeQuotes]);
+  const holdings = useMemo(() => buildHoldingPositions(trades), [trades]);
   const selected = deskStocks.find(stock => stock.code === selectedCode) || deskStocks[0];
   const visibleStocks = activeLane === '全部' ? deskStocks : deskStocks.filter(stock => stock.lane === activeLane);
   const actionStocks = deskStocks.filter(stock => stock.lane === '可试错').sort((a, b) => b.score - a.score);
@@ -131,6 +135,15 @@ export default function Dashboard() {
   const marketHeat = Math.round(rising / Math.max(deskStocks.length, 1) * 100);
   const marketContext = useMemo(() => selected ? buildMarketContext(selected.code, getKlineData(selected.code)) : null, [selected]);
   const command = actionStocks[0] || selected;
+  const selectedRealtime = realtimeQuotes.find(quote => quote.code === selected?.code);
+  const selectedPlan = useMemo(() => selected ? buildStrategyPlan(selected.code, selected.name, selectedRealtime) : null, [selected, selectedRealtime]);
+  const selectedPosition = holdings.find(position => position.code === selected?.code) || null;
+  const tradeGuard = selected && selectedPlan
+    ? buildTradeGuard({ currentPrice: selected.price, plan: selectedPlan, scoreOverall: selected.score, marketHeat })
+    : null;
+  const holdingAdvice = selected && selectedPlan
+    ? buildHoldingAdvice({ position: selectedPosition, currentPrice: selected.price, plan: selectedPlan, scoreOverall: selected.score, marketHeat })
+    : null;
 
   return (
     <div className="space-y-3">
@@ -158,7 +171,7 @@ export default function Dashboard() {
             <CommandMetric icon={Activity} label="市场温度" value={`${marketHeat}%`} tone={marketHeat >= 65 ? 'text-t-red' : marketHeat <= 35 ? 'text-t-green' : 'text-t-yellow'} detail={`${rising}/${deskStocks.length} 上涨`} />
             <CommandMetric icon={Crosshair} label="可操作" value={`${actionStocks.length}只`} tone="text-t-red" detail="符合试错条件" />
             <CommandMetric icon={ShieldCheck} label="风险票" value={`${riskStocks.length}只`} tone={riskStocks.length ? 'text-t-green' : 'text-t-text'} detail="需减仓/止损关注" />
-            <CommandMetric icon={Bot} label="飞书状态" value="待命" tone="text-t-blue" detail="策略/资讯推送入口" />
+            <CommandMetric icon={Bot} label="持仓跟踪" value={`${holdings.length}只`} tone="text-t-blue" detail="按底仓/波段处理" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[0.72fr_1fr] gap-0">
@@ -192,7 +205,7 @@ export default function Dashboard() {
                     <div className="mt-4 grid grid-cols-3 gap-3">
                       <QuoteBlock label="现价" value={formatPrice(selected.price)} tone={selected.changePct >= 0 ? 'text-t-red' : 'text-t-green'} />
                       <QuoteBlock label="策略分" value={String(selected.score)} tone={selected.score >= 15 ? 'text-t-red' : selected.score <= -15 ? 'text-t-green' : 'text-t-yellow'} />
-                      <QuoteBlock label="盈亏比" value={String(selected.riskReward)} tone={selected.riskReward >= 1.5 ? 'text-t-red' : 'text-t-yellow'} />
+                      <QuoteBlock label="交易许可" value={tradeGuard?.label || '-'} tone={tradeGuard?.status === 'allow' ? 'text-t-red' : tradeGuard?.status === 'block' ? 'text-t-green' : 'text-t-yellow'} />
                     </div>
                   </div>
 
@@ -202,7 +215,7 @@ export default function Dashboard() {
                       <ActionLine label="计划买区" value={`${formatPrice(selected.entryLow)}-${formatPrice(selected.entryHigh)}`} />
                       <ActionLine label="止损距离" value={`${selected.riskDistance.toFixed(1)}%`} />
                       <ActionLine label="止损 / 目标" value={`${formatPrice(selected.stopLoss)} / ${formatPrice(selected.target)}`} />
-                      <ActionLine label="趋势状态" value={selected.trendText} />
+                      <ActionLine label="持仓建议" value={holdingAdvice?.label || selected.trendText} />
                     </div>
                   </div>
 
@@ -236,6 +249,9 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+
+          {holdingAdvice && <HoldingCard advice={holdingAdvice} />}
+          {tradeGuard && <TradeGuardCard guard={tradeGuard} />}
 
           <div className="panel p-3">
             <div className="flex items-center gap-2 mb-2">
@@ -361,6 +377,44 @@ function RiskRow({ stock, onPick }: { stock: DeskStock; onPick: () => void }) {
       </div>
       <span className={`text-xs data-num ${stock.changePct >= 0 ? 'text-t-red' : 'text-t-green'}`}>{formatPct(stock.changePct)}</span>
     </button>
+  );
+}
+
+function HoldingCard({ advice }: { advice: HoldingAdvice }) {
+  const tone = advice.tone === 'red' ? 'text-t-red border-t-red/30' : advice.tone === 'green' ? 'text-t-green border-t-green/30' : advice.tone === 'yellow' ? 'text-t-yellow border-t-yellow/30' : 'text-t-blue border-t-blue/30';
+  return (
+    <div className={`panel p-3 border ${tone}`}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h2 className="text-sm font-semibold text-t-textBright">持仓模式</h2>
+        <span className={`text-xs font-bold ${tone.split(' ')[0]}`}>{advice.label}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+        <ActionLine label="浮盈亏" value={formatPct(advice.profitPct)} />
+        <ActionLine label="市值" value={advice.marketValue ? advice.marketValue.toLocaleString('zh-CN', { maximumFractionDigits: 0 }) : '-'} />
+      </div>
+      <div className="space-y-1.5 text-xs text-t-textSecondary">
+        <p>{advice.baseAction}</p>
+        <p>{advice.swingAction}</p>
+        {advice.notes.map(note => <p key={note} className="text-[11px] text-t-textDim">{note}</p>)}
+      </div>
+    </div>
+  );
+}
+
+function TradeGuardCard({ guard }: { guard: TradeGuard }) {
+  const tone = guard.status === 'allow' ? 'text-t-red border-t-red/30' : guard.status === 'block' ? 'text-t-green border-t-green/30' : 'text-t-yellow border-t-yellow/30';
+  return (
+    <div className={`panel p-3 border ${tone}`}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h2 className="text-sm font-semibold text-t-textBright">今日不可交易原因</h2>
+        <span className={`text-xs font-bold ${tone.split(' ')[0]}`}>{guard.label}</span>
+      </div>
+      <div className="space-y-1.5 text-xs">
+        {guard.reasons.length > 0 ? guard.reasons.slice(0, 4).map(reason => (
+          <div key={reason} className="text-t-textSecondary">· {reason}</div>
+        )) : <div className="text-t-textSecondary">主要条件通过，但仍按计划价和仓位上限执行。</div>}
+      </div>
+    </div>
   );
 }
 

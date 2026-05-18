@@ -11,6 +11,7 @@ import {
   type KlineData,
 } from './mockData';
 import { analyzeDaily, calcIndicatorScore, calcSupportResistance } from './analysisEngine';
+import { formatPrice } from './price';
 import type { RealtimeQuote } from './realtimeApi';
 
 export type StrategyBias = 'bullish' | 'neutral' | 'bearish';
@@ -266,20 +267,20 @@ export function buildStrategyPlan(code: string, name: string, quote?: RealtimeQu
   const scenarios: StrategyScenario[] = [
     {
       name: '转强剧本',
-      condition: `放量站上 ${breakoutLine}，且收盘不跌回20日线`,
-      action: `可加到计划仓位，第一目标 ${target1}，强势再看 ${target2}`,
+      condition: `放量站上 ${formatPrice(breakoutLine)}，且收盘不跌回20日线`,
+      action: `可加到计划仓位，第一目标 ${formatPrice(target1)}，强势再看 ${formatPrice(target2)}`,
       probability: bias === 'bullish' ? 42 : bias === 'neutral' ? 32 : 22,
     },
     {
       name: '震荡剧本',
-      condition: `${entryLow}~${breakoutLine} 区间内缩量整理`,
-      action: `持仓不追高，靠近 ${entryLow}~${entryHigh} 才分批低吸`,
+      condition: `${formatPrice(entryLow)}~${formatPrice(breakoutLine)} 区间内缩量整理`,
+      action: `持仓不追高，靠近 ${formatPrice(entryLow)}~${formatPrice(entryHigh)} 才分批低吸`,
       probability: bias === 'neutral' ? 45 : 34,
     },
     {
       name: '走弱剧本',
-      condition: `跌破 ${stopLoss} 或放量跌破 ${sr.strongSupport}`,
-      action: `先减仓/离场，等重新站回 ${sr.weakSupport} 后再评估`,
+      condition: `跌破 ${formatPrice(stopLoss)} 或放量跌破 ${formatPrice(sr.strongSupport)}`,
+      action: `先减仓/离场，等重新站回 ${formatPrice(sr.weakSupport)} 后再评估`,
       probability: bias === 'bearish' ? 44 : 24,
     },
   ];
@@ -290,35 +291,35 @@ export function buildStrategyPlan(code: string, name: string, quote?: RealtimeQu
       price: breakoutLine,
       direction: 'above',
       severity: 'info',
-      message: `站上 ${breakoutLine} 后观察是否放量，确认后才考虑追随`,
+      message: `站上 ${formatPrice(breakoutLine)} 后观察是否放量，确认后才考虑追随`,
     },
     {
       label: '回踩买区',
       price: entryHigh,
       direction: 'below',
       severity: 'info',
-      message: `回到 ${entryLow}~${entryHigh} 是计划内低吸区，不追涨`,
+      message: `回到 ${formatPrice(entryLow)}~${formatPrice(entryHigh)} 是计划内低吸区，不追涨`,
     },
     {
       label: '跌破止损',
       price: stopLoss,
       direction: 'below',
       severity: 'danger',
-      message: `跌破 ${stopLoss} 代表波段计划失效，优先控制仓位`,
+      message: `跌破 ${formatPrice(stopLoss)} 代表波段计划失效，优先控制仓位`,
     },
     {
       label: '接近止盈',
       price: target1,
       direction: 'above',
       severity: 'warning',
-      message: `到达 ${target1} 后分批止盈或上移止损`,
+      message: `到达 ${formatPrice(target1)} 后分批止盈或上移止损`,
     },
   ];
 
   const reasons = [
     `综合评分 ${score.overall}/100，信号为 ${score.signal}`,
     `20日动量 ${pct(m20)}%，60日动量 ${pct(m60)}%`,
-    `MA20 ${round2(ma20)}，MA60 ${round2(ma60)}，趋势强度 ${Math.round(trend.strength * 100)}%`,
+    `MA20 ${formatPrice(ma20)}，MA60 ${formatPrice(ma60)}，趋势强度 ${Math.round(trend.strength * 100)}%`,
     `量能约为20日均量的 ${pct(volRatio)} 倍`,
   ];
 

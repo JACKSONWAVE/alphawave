@@ -16,6 +16,7 @@ import {
   getStockInfo,
   getStockList,
   getTrend,
+  type TradeRecord,
 } from '../data/mockData';
 import { analyzeDaily, calcIndicatorScore, calcSupportResistance } from '../data/analysisEngine';
 import { buildBacktestSuite, type StrategyBacktestResult } from '../data/backtestLab';
@@ -25,7 +26,9 @@ import { formatPct, formatPrice } from '../data/price';
 import { fetchIntradayMinutes } from '../data/realtimeApi';
 import { intradayToKline, mergeRealtimeQuoteIntoKline, type IntradayPoint } from '../data/realtimeKline';
 import { buildStrategyPlan, type StrategyPlan } from '../data/strategyEngine';
+import { buildHoldingAdvice, buildTradeGuard, getHoldingPosition, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import { ProKlineChart } from '../components/ProKlineChart';
 
 type Indicator = 'ma' | 'macd' | 'rsi' | 'kdj' | 'boll' | 'cci' | 'wr';
@@ -61,6 +64,7 @@ export default function Analysis() {
   const [showSignals, setShowSignals] = useState(() => localStorage.getItem('analysis_show_signals') !== '0');
   const [chartMode, setChartMode] = useState<'candle' | 'line'>('candle');
   const [intradayPoints, setIntradayPoints] = useState<IntradayPoint[]>([]);
+  const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
 
   const stockList = getStockList();
   const realtimeCodes = useMemo(() => [code], [code]);
@@ -128,6 +132,21 @@ export default function Analysis() {
   const backtests = useMemo(() => buildBacktestSuite(kline), [kline]);
   const marketContext = useMemo(() => buildMarketContext(code, kline), [code, kline]);
   const intradayStrategy = useMemo(() => buildIntradayStrategy(intradayPoints), [intradayPoints]);
+  const holdingPosition = useMemo(() => getHoldingPosition(trades, code), [trades, code]);
+  const tradeGuard = useMemo(() => buildTradeGuard({
+    currentPrice: latest.close,
+    plan,
+    scoreOverall: score.overall,
+    marketHeat: marketContext.heat,
+    bestBacktestWinRate: backtests[0]?.winRate,
+  }), [latest.close, plan, score.overall, marketContext.heat, backtests]);
+  const holdingAdvice = useMemo(() => buildHoldingAdvice({
+    position: holdingPosition,
+    currentPrice: latest.close,
+    plan,
+    scoreOverall: score.overall,
+    marketHeat: marketContext.heat,
+  }), [holdingPosition, latest.close, plan, score.overall, marketContext.heat]);
 
   useEffect(() => {
     localStorage.setItem('analysis_show_signals', showSignals ? '1' : '0');
@@ -218,7 +237,7 @@ export default function Analysis() {
               </button>
             ))}
           </div>
-          {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} />}
+          {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} />}
           {sideTab === 'signals' && <SignalsPanel signals={signals} />}
           {sideTab === 'backtest' && <BacktestPanel results={backtests} />}
           {sideTab === 'market' && <MarketPanel context={marketContext} />}
@@ -250,7 +269,7 @@ function IntradayPanel({ strategy }: { strategy: IntradayStrategy }) {
   );
 }
 
-function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline }: {
+function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline, tradeGuard, holdingAdvice }: {
   plan: StrategyPlan;
   supportResistance: ReturnType<typeof calcSupportResistance>;
   score: ReturnType<typeof calcIndicatorScore>;
@@ -258,6 +277,8 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
   trend: ReturnType<typeof getTrend>;
   latest: { close: number };
   kline: Array<{ close: number }>;
+  tradeGuard: TradeGuard;
+  holdingAdvice: HoldingAdvice;
 }) {
   const baseIndex = Math.max(0, kline.length - 60);
   const change60 = kline[baseIndex]?.close ? (latest.close - kline[baseIndex].close) / kline[baseIndex].close * 100 : 0;
@@ -303,13 +324,41 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
             <h3 className="text-sm font-semibold text-t-textBright">交易执行闸门</h3>
             <p className="text-[11px] text-t-textDim mt-0.5">先过条件，再谈买卖，避免情绪追高。</p>
           </div>
-          <span className={`text-xs font-bold ${executionColor}`}>{executionText}</span>
+          <span className={`text-xs font-bold ${tradeGuard.status === 'allow' ? 'text-t-red' : tradeGuard.status === 'block' ? 'text-t-green' : executionColor}`}>{tradeGuard.label || executionText}</span>
         </div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
           <Gate label="价格位置" passed={inEntryZone || breakoutConfirmed} text={inEntryZone ? '在计划区' : breakoutConfirmed ? '突破确认' : '未到买点'} />
           <Gate label="盈亏比" passed={plan.riskReward >= 1.5} text={String(plan.riskReward)} />
           <Gate label="趋势分" passed={score.overall >= 15} text={String(score.overall)} />
           <Gate label="止损距离" passed={riskDistance > 0 && riskDistance <= 9} text={`${riskDistance.toFixed(1)}%`} />
+        </div>
+      </div>
+
+      <div className={`panel p-3 border ${holdingAdvice.tone === 'red' ? 'border-t-red/40' : holdingAdvice.tone === 'green' ? 'border-t-green/40' : holdingAdvice.tone === 'yellow' ? 'border-t-yellow/40' : 'border-t-blue/40'}`}>
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div>
+            <h3 className="text-sm font-semibold text-t-textBright">持仓处理</h3>
+            <p className="text-[11px] text-t-textDim mt-0.5">{holdingAdvice.hasHolding ? '按底仓和波段仓分开处理。' : '未记录持仓，默认只按观察/试错处理。'}</p>
+          </div>
+          <span className={`text-xs font-bold ${holdingAdvice.tone === 'red' ? 'text-t-red' : holdingAdvice.tone === 'green' ? 'text-t-green' : holdingAdvice.tone === 'yellow' ? 'text-t-yellow' : 'text-t-blue'}`}>{holdingAdvice.label}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs mb-2">
+          <Row label="浮盈亏" value={formatPct(holdingAdvice.profitPct)} color={holdingAdvice.profitPct >= 0 ? 'text-t-red' : 'text-t-green'} />
+          <Row label="持仓市值" value={holdingAdvice.marketValue ? holdingAdvice.marketValue.toLocaleString('zh-CN', { maximumFractionDigits: 0 }) : '-'} color="text-t-textBright" />
+        </div>
+        <p className="text-xs text-t-textSecondary leading-relaxed">{holdingAdvice.baseAction}</p>
+        <p className="text-xs text-t-textSecondary leading-relaxed mt-1">{holdingAdvice.swingAction}</p>
+      </div>
+
+      <div className={`panel p-3 border ${tradeGuard.status === 'allow' ? 'border-t-red/40' : tradeGuard.status === 'block' ? 'border-t-green/40' : 'border-t-yellow/40'}`}>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-t-textBright">今日不可交易原因</h3>
+          <span className={`text-xs font-bold ${tradeGuard.status === 'allow' ? 'text-t-red' : tradeGuard.status === 'block' ? 'text-t-green' : 'text-t-yellow'}`}>{tradeGuard.label}</span>
+        </div>
+        <div className="space-y-1 text-[11px] text-t-textSecondary">
+          {tradeGuard.reasons.length > 0
+            ? tradeGuard.reasons.slice(0, 5).map(reason => <p key={reason}>· {reason}</p>)
+            : <p>主要条件通过，但仍按计划价、止损价和仓位上限执行。</p>}
         </div>
       </div>
 

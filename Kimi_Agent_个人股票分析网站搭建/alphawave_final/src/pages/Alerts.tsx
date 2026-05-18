@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, Trash2, Bell, BellOff } from 'lucide-react';
 import { getStockList, getStockInfo, getAlerts, saveAlerts } from '../data/mockData';
 import type { AlertRule } from '../data/mockData';
+import { formatPrice } from '../data/price';
 
 export default function Alerts() {
   const [showAdd, setShowAdd] = useState(false);
@@ -52,8 +53,8 @@ export default function Alerts() {
           {triggered.map(a => (
             <div key={a.id} className="flex items-center justify-between text-xs py-1">
               <span className="text-t-text">{a.name} ({a.code})</span>
-              <span className="text-t-red font-medium">已{a.type === 'above' ? '突破' : '跌破'} {a.price.toFixed(2)}</span>
-              <span className="text-t-textBright data-num">当前: {getStockInfo(a.code).price.toFixed(2)}</span>
+              <span className="text-t-red font-medium">已{a.type === 'above' ? '突破' : '跌破'} {formatPrice(a.price)}</span>
+              <span className="text-t-textBright data-num">当前: {formatPrice(getStockInfo(a.code).price)}</span>
             </div>
           ))}
         </div>
@@ -93,8 +94,8 @@ export default function Alerts() {
                 return <tr key={a.id} className={`border-b border-t-border/50 hover:bg-white/[0.04] ${isTriggered ? 'bg-t-red/5' : ''}`}>
                   <td className="px-3 py-2 text-t-text font-medium">{a.name}</td>
                   <td className="py-2 text-t-textDim">{a.type === 'above' ? '高于' : '低于'}</td>
-                  <td className="py-2 text-right data-num text-t-text">{a.price.toFixed(2)}</td>
-                  <td className={`py-2 text-right data-num font-bold ${isTriggered ? 'text-t-red' : 'text-t-textBright'}`}>{info.price.toFixed(2)}</td>
+                  <td className="py-2 text-right data-num text-t-text">{formatPrice(a.price)}</td>
+                  <td className={`py-2 text-right data-num font-bold ${isTriggered ? 'text-t-red' : 'text-t-textBright'}`}>{formatPrice(info.price)}</td>
                   <td className="py-2 text-center">
                     <button onClick={() => toggleAlert(a.id)} className={`px-2 py-0.5 rounded text-[10px] ${a.enabled ? 'bg-t-green/15 text-t-green' : 'bg-t-textDim/15 text-t-textDim'}`}>
                       {a.enabled ? '启用' : '停用'}

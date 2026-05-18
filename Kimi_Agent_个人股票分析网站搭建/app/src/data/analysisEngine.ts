@@ -5,6 +5,7 @@
 
 import { getKlineData, calcMA, calcMACD, calcRSI, calcKDJ, calcBOLL, calcCCI, calcWR, getTrend, type KlineData } from './mockData';
 import type { RealtimeQuote } from './realtimeApi';
+import { formatPct, formatPrice } from './price';
 
 // ── 支撑位/压力位计算 ──
 export interface SupportResistance {
@@ -278,10 +279,10 @@ function generateMidTermStrategy(sr: SupportResistance, score: IndicatorScore, d
   const parts: string[] = [];
   
   parts.push(`【中期波段策略】`);
-  parts.push(`当前位置：${sr.currentPrice}元`);
-  parts.push(`强支撑：${sr.strongSupport} | 弱支撑：${sr.weakSupport}`);
-  parts.push(`弱压力：${sr.weakResistance} | 强压力：${sr.strongResistance}`);
-  parts.push(`目标价：${sr.targetPrice} | 止损位：${sr.stopLoss}`);
+  parts.push(`当前位置：${formatPrice(sr.currentPrice)}元`);
+  parts.push(`强支撑：${formatPrice(sr.strongSupport)} | 弱支撑：${formatPrice(sr.weakSupport)}`);
+  parts.push(`弱压力：${formatPrice(sr.weakResistance)} | 强压力：${formatPrice(sr.strongResistance)}`);
+  parts.push(`目标价：${formatPrice(sr.targetPrice)} | 止损位：${formatPrice(sr.stopLoss)}`);
   parts.push(``);
   parts.push(`综合评分：${score.overall}/100 (${signalToText(score.signal)})`);
   parts.push(`MACD:${score.macdScore} RSI:${score.rsiScore} KDJ:${score.kdjScore} MA:${score.maScore} BOLL:${score.bollScore}`);
@@ -290,17 +291,17 @@ function generateMidTermStrategy(sr: SupportResistance, score: IndicatorScore, d
   // 买卖建议
   if (score.signal === 'strong_buy' || score.signal === 'buy') {
     parts.push(`📌 买入策略：`);
-    parts.push(`- 如未持仓：可在 ${sr.weakSupport}~${sr.currentPrice} 区间分批建仓`);
-    parts.push(`- 如已持仓：继续持有，目标 ${sr.targetPrice}，止损 ${sr.stopLoss}`);
+    parts.push(`- 如未持仓：可在 ${formatPrice(sr.weakSupport)}~${formatPrice(sr.currentPrice)} 区间分批建仓`);
+    parts.push(`- 如已持仓：继续持有，目标 ${formatPrice(sr.targetPrice)}，止损 ${formatPrice(sr.stopLoss)}`);
   } else if (score.signal === 'strong_sell' || score.signal === 'sell') {
     parts.push(`📌 卖出策略：`);
-    parts.push(`- 跌破 ${sr.weakSupport} 减仓50%`);
-    parts.push(`- 跌破 ${sr.strongSupport} 清仓`);
-    parts.push(`- 反弹至 ${sr.weakResistance} 可考虑减仓`);
+    parts.push(`- 跌破 ${formatPrice(sr.weakSupport)} 减仓50%`);
+    parts.push(`- 跌破 ${formatPrice(sr.strongSupport)} 清仓`);
+    parts.push(`- 反弹至 ${formatPrice(sr.weakResistance)} 可考虑减仓`);
   } else {
     parts.push(`📌 观望策略：`);
-    parts.push(`- 等待明确方向，回调至 ${sr.weakSupport} 附近可考虑低吸`);
-    parts.push(`- 突破 ${sr.weakResistance} 可考虑追入`);
+    parts.push(`- 等待明确方向，回调至 ${formatPrice(sr.weakSupport)} 附近可考虑低吸`);
+    parts.push(`- 突破 ${formatPrice(sr.weakResistance)} 可考虑追入`);
   }
   
   parts.push(``);
@@ -321,20 +322,20 @@ export function formatFeishuReport(report: FullAnalysisReport): string {
   const s = report.score;
   
   let md = `## 📊 ${report.name} (${report.code}) 波段分析\n\n`;
-  md += `**${up ? '📈' : '📉'} 现价 ${report.price.toFixed(2)} ${up ? '+' : ''}${report.changePct.toFixed(2)}%**\n\n`;
+  md += `**${up ? '📈' : '📉'} 现价 ${formatPrice(report.price)} ${formatPct(report.changePct)}**\n\n`;
   
   md += `**综合评分：${s.overall}/100** ${s.overall >= 30 ? '🟢' : s.overall <= -30 ? '🔴' : '🟡'}\n`;
   md += `信号：**${signalToText(s.signal)}**\n\n`;
   
   md += `---\n`;
   md += `### 📐 关键价位\n\n`;
-  md += `- 强支撑：**${sr.strongSupport}**\n`;
-  md += `- 弱支撑：**${sr.weakSupport}**\n`;
-  md += `- 当前价：**${sr.currentPrice}**\n`;
-  md += `- 弱压力：**${sr.weakResistance}**\n`;
-  md += `- 强压力：**${sr.strongResistance}**\n`;
-  md += `- 🎯 目标价：**${sr.targetPrice}**\n`;
-  md += `- 🛑 止损位：**${sr.stopLoss}**\n\n`;
+  md += `- 强支撑：**${formatPrice(sr.strongSupport)}**\n`;
+  md += `- 弱支撑：**${formatPrice(sr.weakSupport)}**\n`;
+  md += `- 当前价：**${formatPrice(sr.currentPrice)}**\n`;
+  md += `- 弱压力：**${formatPrice(sr.weakResistance)}**\n`;
+  md += `- 强压力：**${formatPrice(sr.strongResistance)}**\n`;
+  md += `- 🎯 目标价：**${formatPrice(sr.targetPrice)}**\n`;
+  md += `- 🛑 止损位：**${formatPrice(sr.stopLoss)}**\n\n`;
   
   md += `---\n`;
   md += `### 📋 当日分析\n\n`;

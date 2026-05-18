@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Filter, Search, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { getStockList } from '../data/mockData';
+import { formatPct, formatPrice } from '../data/price';
 
 export default function Screener() {
   const stockList = getStockList();
@@ -124,11 +125,11 @@ export default function Screener() {
                   <td className="px-3 py-1.5 data-num text-t-textDim">{s.code}</td>
                   <td className="py-1.5"><Link to={`/analysis?code=${s.code}`} className="text-t-text hover:text-t-blue font-medium">{s.name}</Link></td>
                   <td className="py-1.5 text-t-textDim">{s.industry}</td>
-                  <td className={`py-1.5 text-right font-bold data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{s.price.toFixed(2)}</td>
-                  <td className={`py-1.5 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{up ? '+' : ''}{s.changePct.toFixed(2)}%</td>
+                  <td className={`py-1.5 text-right font-bold data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPrice(s.price)}</td>
+                  <td className={`py-1.5 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPct(s.changePct)}</td>
                   <td className="py-1.5 text-right data-num text-t-textDim">{s.pe > 0 ? s.pe.toFixed(1) : '-'}</td>
-                  <td className="py-1.5 text-right data-num text-t-textDim">{s.high52w.toFixed(0)}</td>
-                  <td className="py-1.5 text-right data-num text-t-textDim">{s.low52w.toFixed(0)}</td>
+                  <td className="py-1.5 text-right data-num text-t-textDim">{formatPrice(s.high52w)}</td>
+                  <td className="py-1.5 text-right data-num text-t-textDim">{formatPrice(s.low52w)}</td>
                   <td className={`py-1.5 data-num ${distHigh > -10 ? 'text-t-red' : 'text-t-green'}`}>{distHigh.toFixed(1)}%</td>
                   <td className="py-1.5"><Link to={`/analysis?code=${s.code}`} className="text-t-blue hover:underline text-xs">分析</Link></td>
                 </tr>;

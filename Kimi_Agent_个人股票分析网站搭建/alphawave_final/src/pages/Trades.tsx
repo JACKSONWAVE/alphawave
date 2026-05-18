@@ -1,7 +1,12 @@
 import { useState } from 'react';
-import { Plus, Trash2, TrendingUp, TrendingDown, Calendar, DollarSign, Percent } from 'lucide-react';
-import { getStockList } from '../data/mockData';
+import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Percent } from 'lucide-react';
+import { getKlineData, getStockList } from '../data/mockData';
 import type { TradeRecord } from '../data/mockData';
+import { calcIndicatorScore } from '../data/analysisEngine';
+import { buildMarketContext } from '../data/marketContext';
+import { formatPct, formatPrice } from '../data/price';
+import { buildStrategyPlan } from '../data/strategyEngine';
+import { buildHoldingAdvice } from '../data/tradeGuard';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
 export default function Trades() {
@@ -94,6 +99,7 @@ export default function Trades() {
               <th className="text-right py-2 font-medium">市值</th>
               <th className="text-right py-2 font-medium">盈亏</th>
               <th className="text-right py-2 font-medium">盈亏率</th>
+              <th className="text-left py-2 font-medium">持仓建议</th>
             </tr></thead>
             <tbody>
               {Array.from(holdings.entries()).map(([code, h]) => {
@@ -103,18 +109,33 @@ export default function Trades() {
                 const pnl = (price - h.cost) * h.shares;
                 const pnlPct = h.cost > 0 ? ((price - h.cost) / h.cost * 100) : 0;
                 const up = pnl >= 0;
+                const kline = getKlineData(code);
+                const plan = buildStrategyPlan(code, stock?.name || code);
+                const score = calcIndicatorScore(kline);
+                const market = buildMarketContext(code, kline);
+                const advice = buildHoldingAdvice({
+                  position: { code, name: stock?.name || code, shares: h.shares, cost: h.cost, lastTradeDate: h.trades[h.trades.length - 1]?.date || '' },
+                  currentPrice: price,
+                  plan,
+                  scoreOverall: score.overall,
+                  marketHeat: market.heat,
+                });
                 return <tr key={code} className="border-b border-t-border/50 hover:bg-white/[0.04]">
                   <td className="px-3 py-2 data-num text-t-textDim">{code}</td>
                   <td className="py-2 text-t-text font-medium">{stock?.name || code}</td>
                   <td className="py-2 text-right data-num text-t-text">{h.shares}</td>
-                  <td className="py-2 text-right data-num text-t-textDim">{h.cost.toFixed(2)}</td>
-                  <td className={`py-2 text-right data-num font-bold ${price >= h.cost ? 'text-t-red' : 'text-t-green'}`}>{price.toFixed(2)}</td>
+                  <td className="py-2 text-right data-num text-t-textDim">{formatPrice(h.cost)}</td>
+                  <td className={`py-2 text-right data-num font-bold ${price >= h.cost ? 'text-t-red' : 'text-t-green'}`}>{formatPrice(price)}</td>
                   <td className="py-2 text-right data-num text-t-textBright">{(price * h.shares).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</td>
                   <td className={`py-2 text-right data-num font-medium ${up ? 'text-t-red' : 'text-t-green'}`}>{up ? '+' : ''}{pnl.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</td>
-                  <td className={`py-2 text-right data-num font-medium ${up ? 'text-t-red' : 'text-t-green'}`}>{up ? '+' : ''}{pnlPct.toFixed(2)}%</td>
+                  <td className={`py-2 text-right data-num font-medium ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPct(pnlPct)}</td>
+                  <td className="py-2 text-t-textSecondary">
+                    <div className="text-xs">{advice.label}</div>
+                    <div className="text-[10px] text-t-textDim truncate max-w-[220px]">{advice.swingAction}</div>
+                  </td>
                 </tr>;
               })}
-              {Array.from(holdings.values()).every(h => h.shares <= 0) && <tr><td colSpan={8} className="py-8 text-center text-t-textDim">暂无持仓</td></tr>}
+              {Array.from(holdings.values()).every(h => h.shares <= 0) && <tr><td colSpan={9} className="py-8 text-center text-t-textDim">暂无持仓</td></tr>}
             </tbody>
           </table>
         </div>
@@ -175,10 +196,10 @@ export default function Trades() {
                       {t.type === 'buy' ? '买入' : '卖出'}
                     </span>
                   </td>
-                  <td className="py-2 text-right data-num text-t-text">{t.price.toFixed(2)}</td>
+                  <td className="py-2 text-right data-num text-t-text">{formatPrice(t.price)}</td>
                   <td className="py-2 text-right data-num text-t-text">{t.shares}</td>
                   <td className="py-2 text-right data-num text-t-textBright">{(t.price * t.shares).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</td>
-                  <td className="py-2 text-right data-num text-t-textDim">{t.fee.toFixed(2)}</td>
+                  <td className="py-2 text-right data-num text-t-textDim">{formatPrice(t.fee)}</td>
                   <td className="py-2 text-t-textDim hidden md:table-cell">{t.note}</td>
                   <td className="py-2 text-center">
                     <button onClick={() => removeTrade(t.id)} className="text-t-textDim hover:text-t-red transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>

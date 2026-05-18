@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Plus, Trash2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Bell, BellOff } from 'lucide-react';
 import { getStockList } from '../data/mockData';
+import { formatPct, formatPrice } from '../data/price';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface WatchItem {
@@ -109,9 +110,9 @@ export default function Watchlist() {
                     <td className="py-2">
                       <Link to={`/analysis?code=${w.code}`} className="text-t-text hover:text-t-blue font-medium transition-colors">{stock.name}</Link>
                     </td>
-                    <td className={`py-2 text-right font-bold data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{stock.price.toFixed(2)}</td>
-                    <td className={`py-2 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{up ? '+' : ''}{stock.change.toFixed(2)}</td>
-                    <td className={`py-2 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{up ? '+' : ''}{stock.changePct.toFixed(2)}%</td>
+                    <td className={`py-2 text-right font-bold data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPrice(stock.price)}</td>
+                    <td className={`py-2 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPrice(stock.change)}</td>
+                    <td className={`py-2 text-right data-num ${up ? 'text-t-red' : 'text-t-green'}`}>{formatPct(stock.changePct)}</td>
                     <td className="py-2 text-t-textDim hidden md:table-cell">{w.note}</td>
                     <td className="py-2 text-right">
                       <button onClick={() => toggleAlert(w.code)} className={`${w.alertEnabled ? 'text-t-yellow' : 'text-t-textDim'} hover:text-t-yellow transition-colors`}>
