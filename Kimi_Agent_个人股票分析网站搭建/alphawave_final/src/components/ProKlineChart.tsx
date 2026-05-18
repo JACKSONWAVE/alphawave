@@ -38,7 +38,12 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function linePath(points: ChartPoint[], getValue: (point: ChartPoint) => number | null | undefined, xOf: (index: number) => number, yOf: (value: number) => number) {
+function linePath(
+  points: ChartPoint[],
+  getValue: (point: ChartPoint) => number | null | undefined,
+  xOf: (index: number) => number,
+  yOf: (value: number) => number
+) {
   let path = '';
   points.forEach((point, index) => {
     const value = getValue(point);
@@ -50,11 +55,15 @@ function linePath(points: ChartPoint[], getValue: (point: ChartPoint) => number 
 
 export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ x: number; end: number } | null>(null);
+
   const [width, setWidth] = useState(900);
   const [visibleCount, setVisibleCount] = useState(120);
   const [endIndex, setEndIndex] = useState(data.length - 1);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [crosshairLocked, setCrosshairLocked] = useState(false);
+  const [cursorGlobalIndex, setCursorGlobalIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setEndIndex(data.length - 1);
@@ -71,6 +80,11 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (cursorGlobalIndex === null || data.length === 0) return;
+    setCursorGlobalIndex(clamp(cursorGlobalIndex, 0, data.length - 1));
+  }, [cursorGlobalIndex, data.length]);
+
   const height = 430;
   const top = 18;
   const priceHeight = 328;
@@ -86,6 +100,34 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
     const start = Math.max(0, end - count + 1);
     return data.slice(start, end + 1).map((item, localIndex) => ({ ...item, localIndex, globalIndex: start + localIndex }));
   }, [data, endIndex, visibleCount]);
+
+  useEffect(() => {
+    if (!crosshairLocked) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (cursorGlobalIndex === null) return;
+      const minEnd = Math.min(visibleCount - 1, data.length - 1);
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        const next = clamp(cursorGlobalIndex - 1, 0, data.length - 1);
+        setCursorGlobalIndex(next);
+        if (next < endIndex - visibleCount + 1) {
+          setEndIndex(clamp(next + visibleCount - 1, minEnd, data.length - 1));
+        }
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        const next = clamp(cursorGlobalIndex + 1, 0, data.length - 1);
+        setCursorGlobalIndex(next);
+        if (next > endIndex) {
+          setEndIndex(clamp(next, minEnd, data.length - 1));
+        }
+      } else if (event.key === 'Escape') {
+        setCrosshairLocked(false);
+        setCursorGlobalIndex(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [crosshairLocked, cursorGlobalIndex, endIndex, visibleCount, data.length]);
 
   const priceRange = useMemo(() => {
     const values = view.flatMap(point => [
@@ -113,25 +155,37 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
   const yOf = (value: number) => top + (priceRange.max - value) / (priceRange.max - priceRange.min) * priceHeight;
   const volumeY = (value: number) => volumeTop + volumeHeight - value / maxVolume * volumeHeight;
 
-  const hover = hoverIndex === null ? null : view[hoverIndex];
+  const activeLocalIndex = useMemo(() => {
+    if (crosshairLocked && cursorGlobalIndex !== null) {
+      const index = view.findIndex(point => point.globalIndex === cursorGlobalIndex);
+      if (index >= 0) return index;
+    }
+    return hoverIndex;
+  }, [crosshairLocked, cursorGlobalIndex, view, hoverIndex]);
+
+  const hover = activeLocalIndex === null ? null : view[activeLocalIndex];
   const priceTicks = Array.from({ length: 6 }, (_, index) => priceRange.min + (priceRange.max - priceRange.min) * index / 5).reverse();
   const xTicks = view.filter((_, index) => index % Math.max(1, Math.floor(view.length / 8)) === 0);
 
-  const handleWheel = (event: React.WheelEvent) => {
+  const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
+    if (!crosshairLocked) return;
     event.preventDefault();
     const direction = event.deltaY > 0 ? 1 : -1;
     setVisibleCount(count => clamp(count + direction * Math.ceil(count * 0.12), 40, Math.max(40, data.length)));
   };
 
-  const handlePointerDown = (event: React.PointerEvent) => {
+  const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     dragRef.current = { x: event.clientX, end: endIndex };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  const handlePointerMove = (event: React.PointerEvent) => {
+  const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const localX = event.clientX - bounds.left - left;
-    setHoverIndex(clamp(Math.round(localX / candleGap - 0.5), 0, view.length - 1));
+    const nextLocalIndex = clamp(Math.round(localX / candleGap - 0.5), 0, view.length - 1);
+    if (!crosshairLocked) {
+      setHoverIndex(nextLocalIndex);
+    }
 
     if (!dragRef.current) return;
     const delta = event.clientX - dragRef.current.x;
@@ -139,27 +193,42 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
     setEndIndex(clamp(dragRef.current.end - shift, Math.min(visibleCount - 1, data.length - 1), data.length - 1));
   };
 
-  const stopDrag = (event: React.PointerEvent) => {
+  const stopDrag = (event: React.PointerEvent<SVGSVGElement>) => {
     dragRef.current = null;
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
-      // pointer capture can already be released by the browser
+      // pointer capture can already be released by browser
     }
+  };
+
+  const activateCrosshair = (event: React.MouseEvent<SVGSVGElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const localX = event.clientX - bounds.left - left;
+    const nextLocalIndex = clamp(Math.round(localX / candleGap - 0.5), 0, view.length - 1);
+    const nextGlobal = view[nextLocalIndex]?.globalIndex ?? null;
+    if (nextGlobal === null) return;
+    setCrosshairLocked(true);
+    setCursorGlobalIndex(nextGlobal);
+    setHoverIndex(nextLocalIndex);
+    svgRef.current?.focus();
   };
 
   return (
     <div ref={wrapRef} className="select-none rounded border border-[#263042] bg-[#111318] overflow-hidden">
       <svg
+        ref={svgRef}
         width="100%"
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         className="block cursor-grab active:cursor-grabbing"
+        tabIndex={0}
         onWheel={handleWheel}
+        onClick={activateCrosshair}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={stopDrag}
-        onPointerLeave={event => { setHoverIndex(null); stopDrag(event); }}
+        onPointerLeave={event => { if (!crosshairLocked) setHoverIndex(null); stopDrag(event); }}
       >
         <rect x={0} y={0} width={width} height={height} fill="#111318" />
 
@@ -183,7 +252,7 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
 
         {chartMode === 'line' ? (
           <path d={linePath(view, point => point.close, xOf, yOf)} fill="none" stroke="#22d3ee" strokeWidth={1.5} />
-        ) : view.map((point) => {
+        ) : view.map(point => {
           const x = xOf(point.localIndex);
           const up = point.close >= point.open;
           const color = up ? '#ef4444' : '#00c2c7';
@@ -193,7 +262,6 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
           const lowY = yOf(point.low);
           const bodyTop = Math.min(openY, closeY);
           const bodyHeight = Math.max(1.5, Math.abs(openY - closeY));
-
           return (
             <g key={point.date}>
               <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth={1} />
@@ -234,8 +302,9 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
         )}
       </svg>
       <div className="flex flex-wrap items-center gap-3 border-t border-[#263042] px-3 py-2 text-[11px] text-t-textDim">
-        <span>拖动平移</span>
-        <span>滚轮缩放</span>
+        <span>点击锁定十字线</span>
+        <span>锁定后滚轮缩放时间</span>
+        <span>左右键逐K切换</span>
         {indicators.includes('ma') && maLines.map(line => <span key={line.key} style={{ color: line.color }}>{line.label}</span>)}
       </div>
     </div>
