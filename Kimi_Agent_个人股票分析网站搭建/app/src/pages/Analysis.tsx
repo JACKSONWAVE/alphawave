@@ -501,7 +501,22 @@ function BacktestPanel({ results }: { results: StrategyBacktestResult[] }) {
             <Row label="回撤" value={`${result.maxDrawdown}%`} color="text-t-green" />
             <Row label="最好" value={`${result.bestReturn}%`} color="text-t-red" />
             <Row label="最差" value={`${result.worstReturn}%`} color="text-t-green" />
+            <Row label="均持" value={`${result.avgHoldingDays}天`} color="text-t-blue" />
+            <Row label="可信度" value={result.sampleSize >= 20 ? '可参考' : '样本偏少'} color={result.sampleSize >= 20 ? 'text-t-red' : 'text-t-yellow'} />
           </div>
+          {result.trades.length > 0 && (
+            <div className="mt-2 border-t border-t-border/60 pt-2">
+              <div className="text-[10px] text-t-textDim mb-1">最近交易样本</div>
+              <div className="space-y-1">
+                {result.trades.slice(-3).reverse().map(trade => (
+                  <div key={`${trade.entryDate}-${trade.exitDate}`} className="grid grid-cols-[1fr_auto] gap-2 text-[11px]">
+                    <span className="text-t-textDim truncate">{trade.entryDate.slice(5)} 买 {formatPrice(trade.entry)} → {trade.exitDate.slice(5)} 卖 {formatPrice(trade.exit)}</span>
+                    <span className={`data-num ${trade.returnPct >= 0 ? 'text-t-red' : 'text-t-green'}`}>{formatPct(trade.returnPct)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-[11px] text-t-yellow mt-2 leading-relaxed">{result.verdict}</p>
         </div>
       ))}

@@ -4,6 +4,10 @@
     {
       "path": "/api/feishu-cron?type=morning",
       "schedule": "0 1 * * 1-5"
+    },
+    {
+      "path": "/api/intel-cron",
+      "schedule": "30 1 * * 1-5"
     }
   ]
 }

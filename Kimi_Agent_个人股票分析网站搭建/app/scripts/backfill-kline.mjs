@@ -64,9 +64,17 @@ function parseStockData(source) {
 async function main() {
   const source = await readFile(tsPath, 'utf8');
   const stockData = parseStockData(source);
-  const codes = Object.keys(stockData.stocks);
+  const requested = [
+    ...process.argv.slice(2),
+    ...(process.env.CODES || '').split(','),
+  ].map(code => code.trim()).filter(Boolean);
+  const codes = requested.length > 0 ? requested : Object.keys(stockData.stocks);
 
   for (const code of codes) {
+    if (!stockData.stocks[code]) {
+      console.log(`skip ${code}: not in stockData.stocks yet`);
+      continue;
+    }
     const kline = await fetchKline(code);
     if (!kline || kline.length === 0) {
       console.log(`skip ${code}`);

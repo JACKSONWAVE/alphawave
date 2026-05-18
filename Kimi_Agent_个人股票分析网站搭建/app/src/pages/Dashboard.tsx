@@ -7,7 +7,9 @@ import {
   ArrowUpRight,
   BellRing,
   Bot,
+  CheckCircle2,
   Crosshair,
+  Database,
   Gauge,
   LineChart,
   Radar,
@@ -22,6 +24,8 @@ import { buildMarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
 import { buildHoldingAdvice, buildHoldingPositions, buildTradeGuard, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
+import { buildQuantCandidates } from '../data/quantPlaybook';
+import { buildDataFreshness, buildRequirementAudit, type SystemAuditItem } from '../data/systemAudit';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import RealtimeStatus from '../components/RealtimeStatus';
@@ -144,10 +148,65 @@ export default function Dashboard() {
   const holdingAdvice = selected && selectedPlan
     ? buildHoldingAdvice({ position: selectedPosition, currentPrice: selected.price, plan: selectedPlan, scoreOverall: selected.score, marketHeat })
     : null;
+  const quantCandidates = useMemo(() => buildQuantCandidates(), [realtimeQuotes]);
+  const auditItems = useMemo(() => buildRequirementAudit(), []);
+  const freshness = useMemo(() => buildDataFreshness(), []);
+  const doneCount = auditItems.filter(item => item.status === 'done').length;
+  const partialCount = auditItems.filter(item => item.status === 'partial').length;
+  const tenYearCount = freshness.filter(item => item.isTenYear).length;
+  const freshCount = freshness.filter(item => item.isFresh).length;
 
   return (
     <div className="space-y-3">
       <RealtimeStatus />
+
+      <section className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-3">
+        <div className="panel p-3">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-t-green" /> 需求闭环巡检</h2>
+              <p className="text-[11px] text-t-textDim mt-0.5">把你提出的 14 项要求直接放到交易台上，哪些已落地、哪些还需要外部数据源一眼能看到。</p>
+            </div>
+            <div className="text-right text-xs data-num">
+              <div className="text-t-green font-bold">{doneCount}/14 已完成</div>
+              <div className="text-t-yellow">{partialCount} 项依赖外部源</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {auditItems.slice(0, 6).map(item => <AuditRow key={item.id} item={item} />)}
+          </div>
+        </div>
+
+        <div className="panel p-3">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2"><Database className="w-4 h-4 text-t-blue" /> 数据与量化体检</h2>
+              <p className="text-[11px] text-t-textDim mt-0.5">10 年数据、当日更新和策略胜率都在这里做第一层过滤。</p>
+            </div>
+            <div className="text-right text-xs data-num">
+              <div className="text-t-blue font-bold">{tenYearCount}/{freshness.length} 十年样本</div>
+              <div className="text-t-textDim">{freshCount} 只更新到今日</div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {quantCandidates.slice(0, 3).map(candidate => (
+              <div key={candidate.code} className="grid grid-cols-[1fr_auto] gap-2 border border-t-border rounded p-2 bg-white/[0.02]">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-t-textBright">{candidate.name}</span>
+                    <span className="text-[10px] text-t-textDim">{candidate.bestStrategy}</span>
+                  </div>
+                  <div className="text-[11px] text-t-textDim truncate">买区 {candidate.entry}｜止损/目标 {candidate.exit}</div>
+                </div>
+                <div className="text-right data-num">
+                  <div className={candidate.rankScore >= 45 ? 'text-t-red font-bold' : 'text-t-yellow font-bold'}>{candidate.rankScore}</div>
+                  <div className="text-[10px] text-t-textDim">胜率 {candidate.winRate}%</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.9fr] gap-3">
         <div className="panel overflow-hidden">
@@ -332,6 +391,24 @@ function CommandMetric({ icon: Icon, label, value, tone, detail }: { icon: typeo
       <div className="flex items-center gap-2 text-t-textDim text-xs"><Icon className="w-3.5 h-3.5" /> {label}</div>
       <div className={`mt-1 text-xl font-bold data-num ${tone}`}>{value}</div>
       <div className="text-[10px] text-t-textDim mt-0.5">{detail}</div>
+    </div>
+  );
+}
+
+function AuditRow({ item }: { item: SystemAuditItem }) {
+  const tone = item.status === 'done'
+    ? 'text-t-green bg-t-green/10 border-t-green/25'
+    : item.status === 'partial'
+      ? 'text-t-yellow bg-t-yellow/10 border-t-yellow/25'
+      : 'text-t-textDim bg-white/[0.02] border-t-border';
+  const label = item.status === 'done' ? '完成' : item.status === 'partial' ? '部分' : '待做';
+  return (
+    <div className="border border-t-border rounded p-2 bg-white/[0.02]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-t-textBright truncate">{item.id}. {item.title}</span>
+        <span className={`px-1.5 py-0.5 rounded border text-[10px] ${tone}`}>{label}</span>
+      </div>
+      <p className="mt-1 text-[11px] text-t-textDim leading-relaxed">{item.detail}</p>
     </div>
   );
 }
