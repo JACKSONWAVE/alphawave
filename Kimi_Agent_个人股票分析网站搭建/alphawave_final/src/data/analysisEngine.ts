@@ -52,13 +52,13 @@ export function calcSupportResistance(data: KlineData[]): SupportResistance {
   const stopLoss = current - atr * 2.5;
   
   return {
-    strongSupport: +strongSupport.toFixed(2),
-    weakSupport: +weakSupport.toFixed(2),
-    currentPrice: +current.toFixed(2),
-    weakResistance: +weakResistance.toFixed(2),
-    strongResistance: +strongResistance.toFixed(2),
-    targetPrice: +targetPrice.toFixed(2),
-    stopLoss: +Math.max(stopLoss, strongSupport * 0.95).toFixed(2),
+    strongSupport: +strongSupport.toFixed(3),
+    weakSupport: +weakSupport.toFixed(3),
+    currentPrice: +current.toFixed(3),
+    weakResistance: +weakResistance.toFixed(3),
+    strongResistance: +strongResistance.toFixed(3),
+    targetPrice: +targetPrice.toFixed(3),
+    stopLoss: +Math.max(stopLoss, strongSupport * 0.95).toFixed(3),
   };
 }
 

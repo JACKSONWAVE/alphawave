@@ -1,14 +1,20 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Pencil, Move, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { ComposedChart, Line, Bar, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea, ReferenceLine } from 'recharts';
+import { ComposedChart, Line, Bar, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea, ReferenceLine, Customized } from 'recharts';
 
 import { getKlineData, getStockInfo, getStockList, calcMA, calcMACD, calcRSI, calcKDJ, calcBOLL, calcCCI, calcWR, generateSignals, getTrend } from '../data/mockData';
 import { calcSupportResistance, calcIndicatorScore, analyzeDaily } from '../data/analysisEngine';
 import { buildStrategyPlan } from '../data/strategyEngine';
+import { useRealtimeQuotes } from '../hooks/useRealtime';
+import { fetchIntradayMinutes } from '../data/realtimeApi';
+import { intradayToKline, mergeRealtimeQuoteIntoKline, type IntradayPoint } from '../data/realtimeKline';
+import { buildBacktestSuite } from '../data/backtestLab';
+import { buildMarketContext } from '../data/marketContext';
+import { formatPct, formatPrice } from '../data/price';
 
 type Indicator = 'ma' | 'macd' | 'rsi' | 'kdj' | 'boll' | 'cci' | 'wr';
-type Period = 30 | 60 | 120 | 250 | 'all';
+type Period = 'intraday' | 30 | 60 | 120 | 250 | 'all';
 type DrawMode = 'line' | 'horizontal' | 'fibonacci' | 'clear';
 
 interface DrawLine {
@@ -28,11 +34,21 @@ export default function Analysis() {
   const [drawMode, setDrawMode] = useState<DrawMode | null>(null);
   const [drawLines, setDrawLines] = useState<DrawLine[]>([]);
   const [fibLevels, setFibLevels] = useState<number[]>([]);
-  const [activeTab, setActiveTab] = useState<'chart' | 'signals'>('chart');
+  const [activeTab, setActiveTab] = useState<'chart' | 'signals' | 'backtest' | 'market'>('chart');
+  const [showSignals, setShowSignals] = useState(() => localStorage.getItem('analysis_show_signals') !== '0');
+  const [chartMode, setChartMode] = useState<'candle' | 'line'>('candle');
+  const [intradayPoints, setIntradayPoints] = useState<IntradayPoint[]>([]);
   const chartRef = useRef<HTMLDivElement>(null);
 
-  const days = period === 'all' ? undefined : period;
-  const kline = useMemo(() => getKlineData(code, days), [code, days]);
+  const realtimeCodes = useMemo(() => [code], [code]);
+  const { quotes: realtimeQuotes, refresh: refreshRealtime } = useRealtimeQuotes({ codes: realtimeCodes, enabled: true });
+  const realtimeQuote = realtimeQuotes.find(q => q.code === code);
+  const days = period === 'all' || period === 'intraday' ? undefined : period;
+  const rawKline = useMemo(() => getKlineData(code, days), [code, days]);
+  const kline = useMemo(() => {
+    if (period === 'intraday' && intradayPoints.length > 0) return intradayToKline(intradayPoints);
+    return mergeRealtimeQuoteIntoKline(rawKline, realtimeQuote);
+  }, [period, intradayPoints, rawKline, realtimeQuote]);
   const info = useMemo(() => getStockInfo(code), [code]);
 
   // 技术指标
@@ -48,7 +64,22 @@ export default function Analysis() {
   const sr = useMemo(() => calcSupportResistance(kline), [kline]);
   const score = useMemo(() => calcIndicatorScore(kline), [kline]);
   const daily = useMemo(() => analyzeDaily(kline), [kline]);
-  const plan = useMemo(() => buildStrategyPlan(code, info.name), [code, info.name]);
+  const plan = useMemo(() => buildStrategyPlan(code, info.name, realtimeQuote), [code, info.name, realtimeQuote]);
+  const backtests = useMemo(() => buildBacktestSuite(kline), [kline]);
+  const marketContext = useMemo(() => buildMarketContext(code, kline), [code, kline]);
+
+  useEffect(() => {
+    localStorage.setItem('analysis_show_signals', showSignals ? '1' : '0');
+  }, [showSignals]);
+
+  useEffect(() => {
+    if (period !== 'intraday') return;
+    let active = true;
+    fetchIntradayMinutes(code).then(points => {
+      if (active) setIntradayPoints(points);
+    });
+    return () => { active = false; };
+  }, [code, period, realtimeQuote?.time]);
 
   // 构建图表数据
   const chartData = useMemo(() => {
@@ -124,9 +155,9 @@ export default function Analysis() {
           {stockList.map(s => <option key={s.code} value={s.code}>{s.code} {s.name}</option>)}
         </select>
         <div>
-          <span className="text-base font-bold data-num text-t-textBright">{latest.close.toFixed(2)}</span>
+          <span className="text-base font-bold data-num text-t-textBright">{formatPrice(latest.close)}</span>
           <span className={`ml-2 text-xs font-medium data-num ${changePct >= 0 ? 'text-t-red' : 'text-t-green'}`}>
-            {changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%
+            {formatPct(changePct)}
           </span>
         </div>
         <div className="flex gap-2 text-xs text-t-textDim">
@@ -134,7 +165,7 @@ export default function Analysis() {
             const [key, label] = k.split(':');
             const val = latest[key as keyof typeof latest] as number;
             const color = key === 'high' ? 'text-t-red' : key === 'low' ? 'text-t-green' : 'text-t-text';
-            return <span key={key}>{label} <span className={`${color} data-num`}>{val.toFixed(2)}</span></span>;
+            return <span key={key}>{label} <span className={`${color} data-num`}>{formatPrice(val)}</span></span>;
           })}
           <span>量 <span className="data-num">{(latest.volume / 10000).toFixed(0)}万</span></span>
         </div>
@@ -142,9 +173,9 @@ export default function Analysis() {
           {trend.trend === 'up' ? '上升趋势' : trend.trend === 'down' ? '下降趋势' : '横盘震荡'}
         </span>
         <div className="ml-auto flex gap-1">
-          {([30, 60, 120, 250, 'all'] as Period[]).map(p => (
+          {(['intraday', 30, 60, 120, 250, 'all'] as Period[]).map(p => (
             <button key={p} onClick={() => setPeriod(p)} className={`px-2 py-0.5 rounded text-xs ${period === p ? 'bg-t-blue text-white' : 'text-t-textDim hover:text-t-text'}`}>
-              {p === 'all' ? '全部' : p === 250 ? '年' : p === 120 ? '半' : p === 60 ? '季' : '月'}
+              {p === 'intraday' ? '分时' : p === 'all' ? '全部' : p === 250 ? '年' : p === 120 ? '半' : p === 60 ? '季' : '月'}
             </button>
           ))}
         </div>
@@ -174,6 +205,19 @@ export default function Analysis() {
                 {icon}{l}
               </button>
             ))}
+            <div className="w-px h-4 bg-t-border mx-1" />
+            <button onClick={() => setShowSignals(v => !v)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors border ${showSignals ? 'bg-t-green/15 text-t-green border-t-green/30' : 'text-t-textDim border-t-border hover:text-t-text'}`}>
+              买卖点
+            </button>
+            <button onClick={() => setChartMode(v => v === 'candle' ? 'line' : 'candle')}
+              className={`px-2 py-0.5 rounded text-xs transition-colors border ${chartMode === 'candle' ? 'bg-t-red/15 text-t-red border-t-red/30' : 'text-t-textDim border-t-border hover:text-t-text'}`}>
+              {chartMode === 'candle' ? '蜡烛图' : '收盘线'}
+            </button>
+            <button onClick={refreshRealtime}
+              className="px-2 py-0.5 rounded text-xs transition-colors border border-t-border text-t-textDim hover:text-t-text">
+              同步实时
+            </button>
           </div>
 
           {/* K线图 */}
@@ -198,22 +242,23 @@ export default function Analysis() {
                   ))}
 
                   {indicators.includes('boll') && <>
-                    <Line type="monotone" dataKey="bollUpper" stroke="#8b5cf6" strokeWidth={1} dot={false} strokeDasharray="3 3" />
-                    <Line type="monotone" dataKey="bollMid" stroke="#6b7280" strokeWidth={1} dot={false} />
-                    <Line type="monotone" dataKey="bollLower" stroke="#8b5cf6" strokeWidth={1} dot={false} strokeDasharray="3 3" />
+                    <Line type="monotone" dataKey="bollUpper" stroke="#8b5cf6" strokeWidth={1} dot={false} strokeDasharray="3 3" connectNulls />
+                    <Line type="monotone" dataKey="bollMid" stroke="#6b7280" strokeWidth={1} dot={false} connectNulls />
+                    <Line type="monotone" dataKey="bollLower" stroke="#8b5cf6" strokeWidth={1} dot={false} strokeDasharray="3 3" connectNulls />
                   </>}
 
                   {indicators.includes('ma') && <>
-                    <Line type="monotone" dataKey="ma5" stroke="#f59e0b" strokeWidth={1.5} dot={false} name="MA5" />
-                    <Line type="monotone" dataKey="ma10" stroke="#3b82f6" strokeWidth={1.5} dot={false} name="MA10" />
-                    <Line type="monotone" dataKey="ma20" stroke="#8b5cf6" strokeWidth={1.5} dot={false} name="MA20" />
-                    <Line type="monotone" dataKey="ma60" stroke="#06b6d4" strokeWidth={1} dot={false} strokeDasharray="4 4" name="MA60" />
+                    <Line type="monotone" dataKey="ma5" stroke="#f59e0b" strokeWidth={1.5} dot={false} name="MA5" connectNulls />
+                    <Line type="monotone" dataKey="ma10" stroke="#3b82f6" strokeWidth={1.5} dot={false} name="MA10" connectNulls />
+                    <Line type="monotone" dataKey="ma20" stroke="#8b5cf6" strokeWidth={1.5} dot={false} name="MA20" connectNulls />
+                    <Line type="monotone" dataKey="ma60" stroke="#06b6d4" strokeWidth={1} dot={false} strokeDasharray="4 4" name="MA60" connectNulls />
                   </>}
 
                   <Bar dataKey="volume" fill="#2a2f3f" fillOpacity={0.3} yAxisId="vol" />
-                  <Line type="monotone" dataKey="close" stroke={changePct >= 0 ? '#ef4444' : '#22c55e'} strokeWidth={1.5} dot={false} name="收盘价" />
-                  <Scatter dataKey="buySignal" fill="#ef4444" shape="triangle" name="买点" />
-                  <Scatter dataKey="sellSignal" fill="#22c55e" shape="triangle" name="卖点" />
+                  {chartMode === 'candle' && <Customized component={(props: any) => <Candles {...props} data={chartData} />} />}
+                  {chartMode === 'line' && <Line type="monotone" dataKey="close" stroke={changePct >= 0 ? '#ef4444' : '#22c55e'} strokeWidth={1.5} dot={false} name="收盘价" connectNulls />}
+                  {showSignals && <Scatter dataKey="buySignal" fill="#ef4444" shape="triangle" name="买点" />}
+                  {showSignals && <Scatter dataKey="sellSignal" fill="#22c55e" shape="triangle" name="卖点" />}
                   <YAxis yAxisId="vol" orientation="right" hide domain={[0, 'auto']} />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -233,9 +278,9 @@ export default function Analysis() {
         <div className="space-y-3">
           {/* 标签页切换 */}
           <div className="flex border-b border-t-border">
-            {(['chart', 'signals'] as const).map(tab => (
+            {(['chart', 'signals', 'backtest', 'market'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-1.5 text-xs ${activeTab === tab ? 'text-t-blue border-b-2 border-t-blue' : 'text-t-textDim hover:text-t-text'}`}>
-                {tab === 'chart' ? '关键价位' : '买卖信号'}
+                {tab === 'chart' ? '关键价位' : tab === 'signals' ? '买卖信号' : tab === 'backtest' ? '回测区' : '市场'}
               </button>
             ))}
           </div>
@@ -255,7 +300,7 @@ export default function Analysis() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
                         <span className="text-xs data-num">{sig.date.slice(5)}</span>
-                        <span className="text-xs font-bold data-num text-t-textBright">{sig.price.toFixed(2)}</span>
+                        <span className="text-xs font-bold data-num text-t-textBright">{formatPrice(sig.price)}</span>
                         <span className={`text-[10px] px-1 rounded ${sig.strength === 'strong' ? 'bg-t-red/20 text-t-red' : 'bg-t-yellow/20 text-t-yellow'}`}>
                           {sig.strength === 'strong' ? '强' : '中'}
                         </span>
@@ -266,6 +311,10 @@ export default function Analysis() {
                 ))}
               </div>
             </div>
+          ) : activeTab === 'backtest' ? (
+            <BacktestPanel results={backtests} />
+          ) : activeTab === 'market' ? (
+            <MarketPanel context={marketContext} />
           ) : (
             <div className="space-y-3">
               {/* 今日交易计划 */}
@@ -515,6 +564,105 @@ export default function Analysis() {
 }
 
 // 副图组件
+function BacktestPanel({ results }: { results: ReturnType<typeof buildBacktestSuite> }) {
+  const best = results[0];
+
+  return (
+    <div className="space-y-3">
+      <div className="panel p-3 border border-t-blue/30 bg-t-blue/5">
+        <h3 className="text-sm font-semibold text-t-textBright mb-1">策略回测实验室</h3>
+        <p className="text-[11px] text-t-textSecondary leading-relaxed">
+          这里把市面常用的趋势回踩、放量突破、超跌反弹、MACD低位金叉放到同一只股票历史里跑一遍，用来判断哪类策略更适合它。
+        </p>
+      </div>
+      {results.length === 0 ? (
+        <div className="panel p-3 text-xs text-t-textDim">历史样本不足，补齐10年数据后回测可信度会明显提升。</div>
+      ) : (
+        results.map(result => (
+          <div key={result.id} className={`panel p-3 border ${best?.id === result.id ? 'border-t-red/40' : 'border-t-border'}`}>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <h3 className="text-sm font-semibold text-t-textBright">{result.name}</h3>
+                <p className="text-[11px] text-t-textDim">{result.description}</p>
+              </div>
+              <span className="px-2 py-0.5 rounded bg-white/[0.04] text-[10px] text-t-textSecondary">{result.style}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="flex justify-between"><span className="text-t-textDim">样本</span><span className="data-num">{result.sampleSize}</span></div>
+              <div className="flex justify-between"><span className="text-t-textDim">胜率</span><span className="data-num text-t-red">{result.winRate}%</span></div>
+              <div className="flex justify-between"><span className="text-t-textDim">均收</span><span className={`data-num ${result.avgReturn >= 0 ? 'text-t-red' : 'text-t-green'}`}>{result.avgReturn}%</span></div>
+              <div className="flex justify-between"><span className="text-t-textDim">回撤</span><span className="data-num text-t-green">{result.maxDrawdown}%</span></div>
+              <div className="flex justify-between"><span className="text-t-textDim">最好</span><span className="data-num text-t-red">{result.bestReturn}%</span></div>
+              <div className="flex justify-between"><span className="text-t-textDim">最差</span><span className="data-num text-t-green">{result.worstReturn}%</span></div>
+            </div>
+            <p className="text-[11px] text-t-yellow mt-2 leading-relaxed">{result.verdict}</p>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function MarketPanel({ context }: { context: ReturnType<typeof buildMarketContext> }) {
+  return (
+    <div className="space-y-3">
+      <div className={`panel p-3 border ${context.regime === 'risk_on' ? 'border-t-red/40' : context.regime === 'risk_off' ? 'border-t-green/40' : 'border-t-yellow/40'}`}>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-t-textBright">大盘与行业联动</h3>
+          <span className="data-num text-t-blue font-bold">{context.heat}</span>
+        </div>
+        <p className="text-xs text-t-textSecondary leading-relaxed">{context.summary}</p>
+      </div>
+      <InfoBlock title="市场温度" items={context.marketNotes} />
+      <InfoBlock title="行业过滤" items={context.sectorNotes} />
+      <InfoBlock title="宏观风险" items={context.macroRisks} />
+      <InfoBlock title="交易习惯" items={context.tradeDiscipline} />
+    </div>
+  );
+}
+
+function InfoBlock({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="panel p-3">
+      <h3 className="text-sm font-semibold text-t-textBright mb-2">{title}</h3>
+      <div className="space-y-1.5">
+        {items.map(item => <p key={item} className="text-[11px] text-t-textSecondary leading-relaxed">{item}</p>)}
+      </div>
+    </div>
+  );
+}
+
+function Candles({ data, xAxisMap, yAxisMap, offset }: any) {
+  const xScale = xAxisMap?.[0]?.scale;
+  const yScale = yAxisMap?.[0]?.scale;
+  if (!xScale || !yScale) return null;
+
+  const width = Math.max(3, Math.min(9, (offset?.width || 600) / Math.max(data.length, 1) * 0.48));
+
+  return (
+    <g>
+      {data.map((item: any) => {
+        const x = xScale(item.date);
+        const openY = yScale(item.open);
+        const closeY = yScale(item.close);
+        const highY = yScale(item.high);
+        const lowY = yScale(item.low);
+        const up = item.close >= item.open;
+        const color = up ? '#ef4444' : '#22c55e';
+        const bodyTop = Math.min(openY, closeY);
+        const bodyHeight = Math.max(2, Math.abs(openY - closeY));
+
+        return (
+          <g key={item.date}>
+            <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth={1} opacity={0.9} />
+            <rect x={x - width / 2} y={bodyTop} width={width} height={bodyHeight} fill={up ? color : 'transparent'} stroke={color} strokeWidth={1} rx={1} />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
 function SubChart({ data, dataKey, label, color, lines, hasZero, domain, refs }: {
   data: any[]; dataKey?: string; label: string; color?: string;
   lines?: { key: string; color: string }[]; hasZero?: boolean; domain?: [number, number]; refs?: { y: number; color: string }[];
@@ -531,8 +679,8 @@ function SubChart({ data, dataKey, label, color, lines, hasZero, domain, refs }:
             <Tooltip contentStyle={{ background: '#1a1d29', border: '1px solid #2a2f3f', borderRadius: '6px', fontSize: '10px', color: '#d1d5db' }} />
             {hasZero && <ReferenceLine y={0} stroke="#353b50" />}
             {refs?.map(r => <ReferenceLine key={r.y} y={r.y} stroke={r.color} strokeDasharray="3 3" />)}
-            {dataKey && <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5} dot={false} />}
-            {lines?.map(l => <Line key={l.key} type="monotone" dataKey={l.key} stroke={l.color} strokeWidth={1} dot={false} />)}
+            {dataKey && <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5} dot={false} connectNulls />}
+            {lines?.map(l => <Line key={l.key} type="monotone" dataKey={l.key} stroke={l.color} strokeWidth={1} dot={false} connectNulls />)}
           </ComposedChart>
         </ResponsiveContainer>
       </div>

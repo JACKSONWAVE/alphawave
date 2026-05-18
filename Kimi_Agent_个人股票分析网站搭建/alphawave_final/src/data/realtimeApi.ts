@@ -222,6 +222,31 @@ export async function fetchRealtimeQuotes(codes?: string[]): Promise<RealtimeQuo
   }
 }
 
+export async function fetchIntradayMinutes(code: string) {
+  try {
+    const tcCode = toTencentCode(code);
+    const url = `https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=${tcCode}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      // @ts-ignore
+      referrerPolicy: 'no-referrer',
+    });
+    const json = await res.json();
+    const rows: string[] = json?.data?.[tcCode]?.data?.data || [];
+    return rows.map(row => {
+      const [rawTime, price, volume, amount] = row.split(' ');
+      return {
+        time: `${rawTime.slice(0, 2)}:${rawTime.slice(2)}`,
+        price: parseFloat(price) || 0,
+        volume: parseFloat(volume) || 0,
+        amount: parseFloat(amount) || 0,
+      };
+    }).filter(point => point.price > 0);
+  } catch {
+    return [];
+  }
+}
+
 export function getCachedQuote(code: string): RealtimeQuote | null {
   return cache.get(code) || null;
 }

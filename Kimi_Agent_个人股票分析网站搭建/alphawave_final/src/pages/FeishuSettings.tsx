@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Send, Save, BookOpen, Plus, Bell, Play, Square, Cloud } from 'lucide-react';
+import { Send, Save, BookOpen, Plus, Bell, Play, Square, Cloud, Eye, EyeOff } from 'lucide-react';
 import { getStockList } from '../data/mockData';
 import { saveFeishuConfig, getFeishuConfig, generateMorningReport, sendToFeishu, startAutoPush, stopAutoPush, FEISHU_GUIDE } from '../components/FeishuBot';
 import type { FeishuConfig } from '../components/FeishuBot';
@@ -15,6 +15,7 @@ export default function FeishuSettings() {
   const [status, setStatus] = useState('');
   const [preview, setPreview] = useState('');
   const [autoPush, setAutoPush] = useState(false);
+  const [showWebhook, setShowWebhook] = useState(false);
 
   const saveConfig = () => {
     const config: FeishuConfig = { webhook, watchList, pushTime, pushType: 'morning' };
@@ -91,8 +92,16 @@ export default function FeishuSettings() {
         <div className="space-y-3">
           <div>
             <label className="text-xs text-t-textDim mb-1 block">飞书机器人 Webhook 地址</label>
-            <input value={webhook} onChange={e => setWebhook(e.target.value)} placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
-              className="w-full bg-t-bg border border-t-border rounded px-3 py-2 text-sm text-t-text outline-none focus:border-t-blue" />
+            <div className="flex gap-2">
+              <input type={showWebhook ? 'text' : 'password'} value={webhook} onChange={e => setWebhook(e.target.value)} placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
+                className="w-full bg-t-bg border border-t-border rounded px-3 py-2 text-sm text-t-text outline-none focus:border-t-blue" />
+              <button type="button" onClick={() => setShowWebhook(v => !v)}
+                className="px-3 rounded border border-t-border text-t-textDim hover:text-t-text transition-colors"
+                title={showWebhook ? '隐藏Webhook' : '显示Webhook'}>
+                {showWebhook ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-t-textDim mt-1">保存后默认隐藏，防止别人看到你的飞书机器人地址；线上长期使用建议放到 Vercel 环境变量。</p>
           </div>
           <div>
             <label className="text-xs text-t-textDim mb-1 block">早盘推送时间（盘前策略报告）</label>

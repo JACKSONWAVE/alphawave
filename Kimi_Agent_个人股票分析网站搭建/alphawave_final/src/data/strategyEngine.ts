@@ -81,7 +81,7 @@ export interface StrategyPlan {
   summary: string;
 }
 
-const round2 = (n: number) => +n.toFixed(2);
+const round2 = (n: number) => +n.toFixed(3);
 const pct = (n: number) => +n.toFixed(2);
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 
