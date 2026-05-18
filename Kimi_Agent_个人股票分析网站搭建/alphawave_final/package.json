@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:gh": "tsc -b && GH_PAGES_BASE='/alphawave/' vite build",
+    "build": "vite build",
+    "build:gh": "GH_PAGES_BASE='/alphawave/' vite build",
+    "typecheck": "tsc -b",
     "preview": "vite preview",
     "data:backfill": "node scripts/backfill-kline.mjs"
   },
