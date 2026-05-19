@@ -28,6 +28,7 @@ type Listener = (snapshot: RealtimeSnapshot) => void;
 const listeners = new Map<Listener, Set<string>>();
 const quoteCache = new Map<string, RealtimeQuote>();
 const firedAlertIds = new Set<string>();
+let cachedQuoteList: RealtimeQuote[] = [];
 
 let loading = false;
 let error: string | null = null;
@@ -57,7 +58,7 @@ function getRequestedCodes() {
 function getSnapshot(): RealtimeSnapshot {
   const interval = getSmartInterval();
   return {
-    quotes: Array.from(quoteCache.values()),
+    quotes: cachedQuoteList,
     loading,
     error,
     lastUpdate,
@@ -161,6 +162,7 @@ async function refreshNow() {
     const requestedCodes = getRequestedCodes();
     const data = await fetchRealtimeQuotes(requestedCodes.length ? requestedCodes : undefined);
     data.forEach(quote => quoteCache.set(quote.code, quote));
+    cachedQuoteList = Array.from(quoteCache.values());
     lastUpdate = Date.now();
     countdown = getSmartInterval();
     evaluateAlerts(data);
@@ -197,6 +199,10 @@ function ensureStarted() {
 
   countdownTimer = setInterval(() => {
     const interval = getSmartInterval();
+    if (interval > 0 && countdown <= 0 && !loading) {
+      void refreshNow().finally(scheduleNext);
+      return;
+    }
     countdown = interval === 0 ? 0 : Math.max(0, countdown - 1);
     notify();
   }, 1000);

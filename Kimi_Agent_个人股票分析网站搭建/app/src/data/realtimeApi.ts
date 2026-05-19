@@ -79,6 +79,10 @@ export function setUserInterval(seconds: number) {
 
 export function getIntervalPresets() { return INTERVAL_PRESETS; }
 
+function getChinaMarketDate(d: Date = new Date()): Date {
+  return new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
+}
+
 // ── A股+港股交易时段 ──
 // 港股集合竞价: 9:00-9:30
 // A股集合竞价: 9:15-9:25（集合竞价结果9:25公布）
@@ -86,21 +90,22 @@ export function getIntervalPresets() { return INTERVAL_PRESETS; }
 // 港股连续竞价: 9:30-12:00, 13:00-16:00
 // 并集（含集合竞价）: 9:00-12:00, 13:00-16:00
 function inTradingHours(d: Date = new Date()): boolean {
-  const h = d.getHours();
-  const m = d.getMinutes();
+  const marketDate = getChinaMarketDate(d);
+  const h = marketDate.getHours();
+  const m = marketDate.getMinutes();
   const t = h * 60 + m;
   return (t >= 540 && t <= 720) || (t >= 780 && t <= 960);
 }
 
 // ── 是否在开市时段 ──
 export function isMarketOpen(): boolean {
-  const now = new Date();
-  return isTradingDay(now) && inTradingHours(now);
+  const now = getChinaMarketDate();
+  return isTradingDay(now) && inTradingHours();
 }
 
 // ── 交易时段描述 ──
 export function getMarketPhase(): string {
-  const now = new Date();
+  const now = getChinaMarketDate();
   const h = now.getHours();
   const m = now.getMinutes();
   const t = h * 60 + m;
@@ -125,8 +130,8 @@ export function getMarketPhase(): string {
 
 // ── 下一次交易时间提示 ──
 export function getNextSessionHint(): string {
-  const now = new Date();
-  if (isTradingDay(now) && inTradingHours(now)) return '交易中';
+  const now = getChinaMarketDate();
+  if (isTradingDay(now) && inTradingHours()) return '交易中';
 
   // 非交易日
   if (!isTradingDay(now)) {
@@ -156,13 +161,13 @@ export function getNextSessionHint(): string {
 // 非交易时间 => 0（停刷）
 // 交易时间 => 用户设定间隔
 export function getSmartInterval(): number {
-  const now = new Date();
+  const now = getChinaMarketDate();
   
   // 非交易日 => 停刷
   if (!isTradingDay(now)) return 0;
   
   // 非开市时段 => 停刷
-  if (!inTradingHours(now)) return 0;
+  if (!inTradingHours()) return 0;
   
   // 交易时段 => 用户设定
   const user = getUserInterval();

@@ -122,8 +122,9 @@ function buildDeskStocks(staticStocks: ReturnType<typeof getStockList>, realtime
 }
 
 export default function Dashboard() {
-  const indexData = getMarketIndex();
-  const staticStocks = getStockList();
+  const indexData = useMemo(() => getMarketIndex(), []);
+  const staticStocks = useMemo(() => getStockList(), []);
+  const stockOrder = useMemo(() => new Map(staticStocks.map((stock, index) => [stock.code, index])), [staticStocks]);
   const { quotes: realtimeQuotes, loading, refresh } = useRealtimeQuotes({});
   const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
   const [activeLane, setActiveLane] = useState<DeskLane | '全部'>('全部');
@@ -132,9 +133,15 @@ export default function Dashboard() {
   const deskStocks = useMemo(() => buildDeskStocks(staticStocks, realtimeQuotes), [staticStocks, realtimeQuotes]);
   const holdings = useMemo(() => buildHoldingPositions(trades), [trades]);
   const selected = deskStocks.find(stock => stock.code === selectedCode) || deskStocks[0];
-  const visibleStocks = activeLane === '全部' ? deskStocks : deskStocks.filter(stock => stock.lane === activeLane);
-  const actionStocks = deskStocks.filter(stock => stock.lane === '可试错').sort((a, b) => b.score - a.score);
-  const riskStocks = deskStocks.filter(stock => stock.lane === '风险减仓').sort((a, b) => a.score - b.score);
+  const visibleStocks = useMemo(() => (
+    activeLane === '全部' ? deskStocks : deskStocks.filter(stock => stock.lane === activeLane)
+  ), [activeLane, deskStocks]);
+  const actionStocks = useMemo(() => deskStocks
+    .filter(stock => stock.lane === '可试错')
+    .sort((a, b) => b.score - a.score || (stockOrder.get(a.code) || 0) - (stockOrder.get(b.code) || 0)), [deskStocks, stockOrder]);
+  const riskStocks = useMemo(() => deskStocks
+    .filter(stock => stock.lane === '风险减仓')
+    .sort((a, b) => a.score - b.score || (stockOrder.get(a.code) || 0) - (stockOrder.get(b.code) || 0)), [deskStocks, stockOrder]);
   const rising = deskStocks.filter(stock => stock.changePct >= 0).length;
   const marketHeat = Math.round(rising / Math.max(deskStocks.length, 1) * 100);
   const marketContext = useMemo(() => selected ? buildMarketContext(selected.code, getKlineData(selected.code)) : null, [selected]);
