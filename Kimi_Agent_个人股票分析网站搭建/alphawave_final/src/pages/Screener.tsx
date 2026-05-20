@@ -19,7 +19,7 @@ export default function Screener() {
   const industries = ['全部', ...Array.from(new Set(stockList.map(s => s.industry)))];
 
   const filtered = useMemo(() => {
-    let res = stockList;
+    let res = [...stockList];
     if (minPrice) res = res.filter(s => s.price >= parseFloat(minPrice));
     if (maxPrice) res = res.filter(s => s.price <= parseFloat(maxPrice));
     if (minChange) res = res.filter(s => s.changePct >= parseFloat(minChange));

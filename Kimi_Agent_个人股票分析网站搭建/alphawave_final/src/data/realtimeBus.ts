@@ -97,15 +97,15 @@ async function sendFeishuAlert(rule: AlertRule, quote: RealtimeQuote) {
   const watched = !config.watchList?.length || config.watchList.includes(rule.code);
   if (!watched) return;
 
-  const direction = rule.type === 'above' ? '突破' : '跌破';
+  const direction = rule.type === 'above' ? 'breaks above' : 'falls below';
   const message = [
-    `## AlphaWave 实时预警`,
-    ``,
-    `**${rule.name} (${rule.code})** 已${direction} ${rule.price}`,
-    ``,
-    `当前价：${quote.price}`,
-    `涨跌幅：${quote.changePct}%`,
-    `时间：${quote.time || new Date().toLocaleString('zh-CN')}`,
+    '## AlphaWave Realtime Alert',
+    '',
+    `**${rule.name} (${rule.code})** ${direction} ${rule.price}`,
+    '',
+    `Current price: ${quote.price}`,
+    `Change: ${quote.changePct}%`,
+    `Time: ${quote.time || new Date().toLocaleString('zh-CN')}`,
   ].join('\n');
 
   try {
@@ -115,7 +115,7 @@ async function sendFeishuAlert(rule: AlertRule, quote: RealtimeQuote) {
       body: JSON.stringify({
         msg_type: 'interactive',
         card: {
-          header: { title: { tag: 'plain_text', content: 'AlphaWave 实时预警' }, template: 'red' },
+          header: { title: { tag: 'plain_text', content: 'AlphaWave Realtime Alert' }, template: 'red' },
           elements: [{ tag: 'div', text: { tag: 'lark_md', content: message } }],
         },
       }),
@@ -146,8 +146,7 @@ function evaluateAlerts(quotes: RealtimeQuote[]) {
 
     if (firedAlertIds.has(rule.id)) return;
     firedAlertIds.add(rule.id);
-    const detail = { rule, quote };
-    dispatchLocalEvent('alphawave:alert-fired', detail);
+    dispatchLocalEvent('alphawave:alert-fired', { rule, quote });
     void sendFeishuAlert(rule, quote);
   });
 }
@@ -167,7 +166,7 @@ async function refreshNow() {
     countdown = getSmartInterval();
     evaluateAlerts(data);
   } catch {
-    error = '获取失败';
+    error = 'fetch failed';
   } finally {
     loading = false;
     notify();

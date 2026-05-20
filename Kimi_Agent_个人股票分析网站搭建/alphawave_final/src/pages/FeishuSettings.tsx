@@ -30,7 +30,6 @@ export default function FeishuSettings() {
   const saveConfig = () => {
     const config: FeishuConfig = { webhook, watchList, pushTime, pushType: 'morning' };
     saveFeishuConfig(config);
-    window.dispatchEvent(new CustomEvent('alphawave:settings-changed', { detail: { feishu: true } }));
     setStatus('配置已保存');
     setTimeout(() => setStatus(''), 2000);
   };

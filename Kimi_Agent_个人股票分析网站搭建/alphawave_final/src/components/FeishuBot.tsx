@@ -16,6 +16,7 @@ export { generateCloseReport, generateMorningReport, generateSignalReport, sendT
 
 export function saveFeishuConfig(config: FeishuConfig) {
   localStorage.setItem('feishu_config', JSON.stringify(config));
+  window.dispatchEvent(new CustomEvent('alphawave:settings-changed', { detail: { feishu: true } }));
 }
 
 export function getFeishuConfig(): FeishuConfig | null {

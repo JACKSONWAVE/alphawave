@@ -1,8 +1,8 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, BarChart3, Star, Receipt, Bell, Settings, Search, Filter, Bot } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { getMarketIndex } from '../data/mockData';
+import { getMarketIndex, getStockList } from '../data/mockData';
 import { AlertBadge } from './AlertBadge';
 
 const navItems = [
@@ -15,7 +15,31 @@ const navItems = [
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
+  const [query, setQuery] = useState('');
+  const navigate = useNavigate();
   const indexData = getMarketIndex();
+  const stockList = useMemo(() => getStockList(), []);
+  const suggestions = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    if (!keyword) return [];
+    return stockList.filter(stock =>
+      stock.code.toLowerCase().includes(keyword) ||
+      stock.name.toLowerCase().includes(keyword) ||
+      stock.industry.toLowerCase().includes(keyword)
+    ).slice(0, 6);
+  }, [query, stockList]);
+
+  const goToStock = (value = query) => {
+    const keyword = value.trim().toLowerCase();
+    if (!keyword) return;
+    const stock = stockList.find(item =>
+      item.code.toLowerCase() === keyword ||
+      item.name.toLowerCase() === keyword
+    ) || suggestions[0];
+    if (!stock) return;
+    navigate(`/analysis?code=${stock.code}`);
+    setQuery('');
+  };
 
   return (
     <div className="flex h-screen bg-t-bg overflow-hidden">
@@ -62,9 +86,36 @@ export default function Layout() {
 
       <div className="flex-1 flex flex-col min-w-0">
         <header className="flex items-center justify-between px-4 h-10 border-b border-t-border bg-t-panel">
-          <div className="flex items-center gap-2">
+          <div className="relative flex items-center gap-2">
             <Search className="w-3.5 h-3.5 text-t-textDim" />
-            <input type="text" placeholder="输入股票代码/名称" className="bg-transparent text-xs text-t-text placeholder-t-textDim outline-none w-56" />
+            <input
+              type="text"
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') goToStock();
+                if (event.key === 'Escape') setQuery('');
+              }}
+              placeholder="输入股票代码/名称"
+              className="bg-transparent text-xs text-t-text placeholder-t-textDim outline-none w-56"
+            />
+            {suggestions.length > 0 && (
+              <div className="absolute left-5 top-8 z-50 w-72 rounded border border-t-border bg-t-panel shadow-xl overflow-hidden">
+                {suggestions.map(stock => (
+                  <button
+                    key={stock.code}
+                    onMouseDown={event => {
+                      event.preventDefault();
+                      goToStock(stock.code);
+                    }}
+                    className="w-full px-3 py-2 text-left text-xs hover:bg-white/[0.04] flex items-center justify-between gap-3"
+                  >
+                    <span className="text-t-text truncate">{stock.name}</span>
+                    <span className="data-num text-t-textDim whitespace-nowrap">{stock.code}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4 text-xs">
             {indexData.map((t, i) => (
