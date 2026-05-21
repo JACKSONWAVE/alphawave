@@ -11,7 +11,6 @@ import {
   calcMACD,
   calcRSI,
   calcWR,
-  generateSignals,
   getKlineData,
   getStockInfo,
   getStockList,
@@ -27,6 +26,7 @@ import { getAppSettings } from '../data/appSettings';
 import { fetchIntradayMinutes } from '../data/realtimeApi';
 import { intradayToKline, mergeRealtimeQuoteIntoKline, type IntradayPoint } from '../data/realtimeKline';
 import { buildStrategyPlan, type StrategyPlan } from '../data/strategyEngine';
+import { buildTechnicalSignalReport, type TechnicalSignal, type TechnicalSignalReport } from '../data/technicalSignals';
 import { buildHoldingAdvice, buildTradeGuard, getHoldingPosition, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
@@ -73,7 +73,9 @@ export default function Analysis() {
   const { quotes: realtimeQuotes, refresh: refreshRealtime } = useRealtimeQuotes({ codes: realtimeCodes, enabled: true });
   const realtimeQuote = realtimeQuotes.find(quote => quote.code === code);
   const days = period === 'all' || period === 'intraday' ? undefined : period;
-  const rawKline = useMemo(() => getKlineData(code, days), [code, days]);
+  const fullRawKline = useMemo(() => getKlineData(code), [code]);
+  const rawKline = useMemo(() => days ? fullRawKline.slice(-days) : fullRawKline, [days, fullRawKline]);
+  const fullKline = useMemo(() => mergeRealtimeQuoteIntoKline(fullRawKline, realtimeQuote), [fullRawKline, realtimeQuote]);
   const kline = useMemo(() => {
     if (period === 'intraday' && intradayPoints.length > 0) return intradayToKline(intradayPoints);
     return mergeRealtimeQuoteIntoKline(rawKline, realtimeQuote);
@@ -94,7 +96,8 @@ export default function Analysis() {
     return { ma5, ma10, ma20, ma60, macd, rsi, kdj, boll, cci, wr };
   }, [kline]);
 
-  const signals = useMemo(() => generateSignals(kline), [kline]);
+  const technicalReport = useMemo(() => buildTechnicalSignalReport(fullKline), [fullKline]);
+  const signals = technicalReport.signals;
   const chartData = useMemo(() => {
     const signalMap = new Map(signals.map(signal => [signal.date, signal]));
     return kline.map((item, index) => {
@@ -119,6 +122,8 @@ export default function Analysis() {
         wr: calc.wr[index],
         buySignal: signal?.type === 'buy' ? item.low * 0.985 : null,
         sellSignal: signal?.type === 'sell' ? item.high * 1.015 : null,
+        signalTitle: signal?.title,
+        signalScore: signal?.score,
       };
     });
   }, [kline, calc, signals]);
@@ -239,8 +244,8 @@ export default function Analysis() {
               </button>
             ))}
           </div>
-          {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} />}
-          {sideTab === 'signals' && <SignalsPanel signals={signals} />}
+          {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} />}
+          {sideTab === 'signals' && <ProfessionalSignalsPanel signals={signals} />}
           {sideTab === 'backtest' && <BacktestPanel results={backtests} />}
           {sideTab === 'market' && <MarketPanel context={marketContext} />}
         </div>
@@ -271,7 +276,7 @@ function IntradayPanel({ strategy }: { strategy: IntradayStrategy }) {
   );
 }
 
-function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline, tradeGuard, holdingAdvice }: {
+function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline, tradeGuard, holdingAdvice, technicalReport }: {
   plan: StrategyPlan;
   supportResistance: ReturnType<typeof calcSupportResistance>;
   score: ReturnType<typeof calcIndicatorScore>;
@@ -281,6 +286,7 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
   kline: Array<{ close: number }>;
   tradeGuard: TradeGuard;
   holdingAdvice: HoldingAdvice;
+  technicalReport: TechnicalSignalReport;
 }) {
   const baseIndex = Math.max(0, kline.length - 60);
   const change60 = kline[baseIndex]?.close ? (latest.close - kline[baseIndex].close) / kline[baseIndex].close * 100 : 0;
@@ -319,6 +325,8 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
           <div className="pt-1 text-[11px] text-t-textSecondary leading-relaxed">{plan.positionSize}</div>
         </div>
       </div>
+
+      <TechnicalConsensusPanel report={technicalReport} />
 
       <div className="panel p-3 border border-t-blue/20">
         <div className="flex items-start justify-between gap-3 mb-2">
@@ -437,7 +445,42 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
   );
 }
 
-function SignalsPanel({ signals }: { signals: ReturnType<typeof generateSignals> }) {
+function TechnicalConsensusPanel({ report }: { report: TechnicalSignalReport }) {
+  const tone = report.bias === 'bullish' ? 'red' : report.bias === 'bearish' ? 'green' : 'yellow';
+  const toneClass = tone === 'red' ? 'text-t-red border-t-red/40' : tone === 'green' ? 'text-t-green border-t-green/40' : 'text-t-yellow border-t-yellow/40';
+  const scoreWidth = `${Math.min(100, Math.abs(report.score))}%`;
+  const scoreLabel = report.score > 0 ? `+${report.score}` : String(report.score);
+  return (
+    <div className={`panel p-3 border ${toneClass}`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div>
+          <h3 className="text-sm font-semibold text-t-textBright">技术共振买卖点</h3>
+          <p className="text-[11px] text-t-textDim mt-0.5">{report.verdict}</p>
+        </div>
+        <span className={`data-num text-lg font-bold ${tone === 'red' ? 'text-t-red' : tone === 'green' ? 'text-t-green' : 'text-t-yellow'}`}>{scoreLabel}</span>
+      </div>
+      <div className="h-1.5 bg-t-border rounded-full overflow-hidden mb-2">
+        <div className={`h-full rounded-full ${tone === 'red' ? 'bg-t-red' : tone === 'green' ? 'bg-t-green' : 'bg-t-yellow'}`} style={{ width: scoreWidth }} />
+      </div>
+      <p className="text-xs text-t-textSecondary leading-relaxed">{report.action}</p>
+      <p className="text-[11px] text-t-yellow leading-relaxed mt-1">{report.risk}</p>
+      <div className="mt-2 space-y-1 text-[11px] text-t-textDim">
+        <p>{report.buyPlan}</p>
+        <p>{report.sellPlan}</p>
+      </div>
+      <div className="mt-2 grid grid-cols-1 gap-1">
+        {report.events.slice(0, 6).map(event => (
+          <div key={`${event.name}-${event.side}`} className="flex items-start justify-between gap-2 text-[11px] border border-t-border/50 rounded px-2 py-1 bg-white/[0.02]">
+            <span className={event.side === 'bullish' ? 'text-t-red' : event.side === 'bearish' ? 'text-t-green' : 'text-t-textDim'}>{event.name}</span>
+            <span className="data-num text-t-textBright">{event.side === 'bullish' ? '+' : event.side === 'bearish' ? '-' : ''}{event.weight}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SignalsPanel({ signals }: { signals: TechnicalSignal[] }) {
   const recentSignals = signals.slice(-40).reverse();
   return (
     <div className="panel">
@@ -460,6 +503,42 @@ function SignalsPanel({ signals }: { signals: ReturnType<typeof generateSignals>
                 </span>
               </div>
               <p className="text-[11px] text-t-textDim truncate">{signal.reason}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProfessionalSignalsPanel({ signals }: { signals: TechnicalSignal[] }) {
+  const recentSignals = signals.slice(-40).reverse();
+  return (
+    <div className="panel">
+      <div className="px-3 py-2 border-b border-t-border flex justify-between">
+        <h3 className="text-sm font-semibold text-t-textBright">专业买卖信号</h3>
+        <span className="text-xs text-t-textDim">{signals.length}个</span>
+      </div>
+      <div className="max-h-[560px] overflow-y-auto scrollbar-thin">
+        {recentSignals.length === 0 ? (
+          <div className="px-3 py-4 text-xs text-t-textDim leading-relaxed">
+            当前没有满足共振条件的高置信买卖点。只有MACD、KDJ、量能、均线等至少两类信号同向时才会标记。
+          </div>
+        ) : recentSignals.map((signal, index) => (
+          <div key={`${signal.date}-${index}`} className={`px-3 py-2 border-b border-t-border/30 flex gap-2 ${index % 2 ? 'bg-white/[0.02]' : ''}`}>
+            <span className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5 ${signal.type === 'buy' ? 'bg-t-red/20 text-t-red' : 'bg-t-green/20 text-t-green'}`}>
+              {signal.type === 'buy' ? '买' : '卖'}
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1">
+                <span className="text-xs data-num">{signal.date.slice(5)}</span>
+                <span className="text-xs font-bold data-num text-t-textBright">{formatPrice(signal.price)}</span>
+                <span className={`text-[10px] px-1 rounded ${signal.strength === 'strong' ? 'bg-t-red/20 text-t-red' : 'bg-t-yellow/20 text-t-yellow'}`}>
+                  {signal.title} {signal.score}
+                </span>
+              </div>
+              <p className="text-[11px] text-t-textDim truncate">{signal.reason}</p>
+              <p className="text-[11px] text-t-textSecondary truncate">{signal.action}</p>
             </div>
           </div>
         ))}

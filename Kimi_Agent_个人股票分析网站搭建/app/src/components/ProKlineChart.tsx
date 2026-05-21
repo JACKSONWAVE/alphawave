@@ -17,6 +17,8 @@ interface ChartPoint {
   ma60?: number | null;
   buySignal?: number | null;
   sellSignal?: number | null;
+  signalTitle?: string;
+  signalScore?: number;
 }
 
 interface Props {
@@ -177,6 +179,7 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
   }, [crosshairLocked, cursorGlobalIndex, view, hoverIndex]);
 
   const hover = crosshairLocked && activeLocalIndex !== null ? view[activeLocalIndex] : null;
+  const hoverBoxHeight = hover?.signalTitle ? 150 : 126;
   const priceTicks = Array.from({ length: 6 }, (_, index) => priceRange.min + (priceRange.max - priceRange.min) * index / 5).reverse();
   const xTicks = view.filter((_, index) => index % Math.max(1, Math.floor(view.length / 8)) === 0);
 
@@ -310,8 +313,23 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
 
         {showSignals && view.map(point => {
           const x = xOf(point.localIndex);
-          if (point.buySignal) return <path key={`buy-${point.date}`} d={`M ${x} ${yOf(point.low) + 12} l -5 9 h 10 z`} fill="#ef4444" opacity={0.9} />;
-          if (point.sellSignal) return <path key={`sell-${point.date}`} d={`M ${x} ${yOf(point.high) - 12} l -5 -9 h 10 z`} fill="#22c55e" opacity={0.9} />;
+          const size = point.signalScore && point.signalScore >= 72 ? 6 : 5;
+          const opacity = point.signalScore && point.signalScore >= 72 ? 0.95 : 0.72;
+          const title = `${point.signalTitle || ''}${point.signalScore ? ` ${point.signalScore}` : ''}`.trim();
+          if (point.buySignal) {
+            return (
+              <path key={`buy-${point.date}`} d={`M ${x} ${yOf(point.low) + 12} l -${size} ${size + 4} h ${size * 2} z`} fill="#ef4444" opacity={opacity}>
+                {title && <title>{title}</title>}
+              </path>
+            );
+          }
+          if (point.sellSignal) {
+            return (
+              <path key={`sell-${point.date}`} d={`M ${x} ${yOf(point.high) - 12} l -${size} -${size + 4} h ${size * 2} z`} fill="#22c55e" opacity={opacity}>
+                {title && <title>{title}</title>}
+              </path>
+            );
+          }
           return null;
         })}
 
@@ -319,12 +337,13 @@ export function ProKlineChart({ data, indicators, showSignals, chartMode, plan }
           <g>
             <line x1={xOf(hover.localIndex)} x2={xOf(hover.localIndex)} y1={top} y2={volumeTop + volumeHeight} stroke="#d1d5db" strokeWidth={0.7} opacity={0.45} />
             <line x1={0} x2={width} y1={yOf(hover.close)} y2={yOf(hover.close)} stroke="#d1d5db" strokeWidth={0.7} opacity={0.35} />
-            <rect x={Math.min(xOf(hover.localIndex) + 12, width - 172)} y={28} width={160} height={126} rx={6} fill="#151a23" stroke="#334155" opacity={0.96} />
+            <rect x={Math.min(xOf(hover.localIndex) + 12, width - 172)} y={28} width={160} height={hoverBoxHeight} rx={6} fill="#151a23" stroke="#334155" opacity={0.96} />
             <TooltipText x={Math.min(xOf(hover.localIndex) + 24, width - 160)} y={50} label={hover.date} strong />
             <TooltipText x={Math.min(xOf(hover.localIndex) + 24, width - 160)} y={72} label={`开 ${formatPrice(hover.open)}  高 ${formatPrice(hover.high)}`} />
             <TooltipText x={Math.min(xOf(hover.localIndex) + 24, width - 160)} y={92} label={`低 ${formatPrice(hover.low)}  收 ${formatPrice(hover.close)}`} />
             <TooltipText x={Math.min(xOf(hover.localIndex) + 24, width - 160)} y={112} label={`量 ${(hover.volume / 10000).toFixed(0)}万`} />
             {indicators.includes('ma') && <TooltipText x={Math.min(xOf(hover.localIndex) + 24, width - 160)} y={134} label={`MA5 ${hover.ma5 ? formatPrice(hover.ma5) : '-'} / MA20 ${hover.ma20 ? formatPrice(hover.ma20) : '-'}`} />}
+            {hover.signalTitle && <TooltipText x={Math.min(xOf(hover.localIndex) + 24, width - 160)} y={154} label={`${hover.signalTitle} ${hover.signalScore || ''}`} strong />}
           </g>
         )}
       </svg>
