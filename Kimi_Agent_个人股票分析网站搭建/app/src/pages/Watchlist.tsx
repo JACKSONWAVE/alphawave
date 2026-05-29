@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Plus, Trash2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Bell, BellOff } from 'lucide-react';
 import { getAlerts, getStockList, saveAlerts } from '../data/mockData';
@@ -22,7 +22,7 @@ const defaultWatchlist: WatchItem[] = [
 ];
 
 export default function Watchlist() {
-  const stockList = getStockList();
+  const stockList = useMemo(() => getStockList(), []);
   const [watchlist, setWatchlist] = useLocalStorage<WatchItem[]>('watchlist', defaultWatchlist);
   const [newCode, setNewCode] = useState('');
   const [newNote, setNewNote] = useState('');
@@ -33,10 +33,25 @@ export default function Watchlist() {
   const filtered = selectedGroup === '全部' ? watchlist : watchlist.filter(w => w.group === selectedGroup);
   const { quotes } = useRealtimeQuotes({ codes: watchlist.map(w => w.code) });
   const quoteMap = new Map(quotes.map(quote => [quote.code, quote]));
+  const watchCodes = useMemo(() => new Set(watchlist.map(item => item.code)), [watchlist]);
+  const stockMap = useMemo(() => new Map(stockList.map(stock => [stock.code, stock])), [stockList]);
+  const candidates = useMemo(() => {
+    const keyword = newCode.trim().toLowerCase();
+    if (!keyword) return [];
+    return stockList
+      .filter(stock => !watchCodes.has(stock.code))
+      .filter(stock =>
+        stock.code.toLowerCase().includes(keyword) ||
+        stock.name.toLowerCase().includes(keyword) ||
+        stock.industry.toLowerCase().includes(keyword)
+      )
+      .slice(0, 30);
+  }, [newCode, stockList, watchCodes]);
 
   const addStock = () => {
     if (!newCode) return;
-    const found = stockList.find(s => s.code === newCode || s.name === newCode);
+    const keyword = newCode.trim().toLowerCase();
+    const found = stockList.find(s => s.code.toLowerCase() === keyword || s.name.toLowerCase() === keyword) || candidates[0];
     if (!found) return;
     if (watchlist.find(w => w.code === found.code)) return;
     setWatchlist(prev => [...prev, { code: found.code, group: newGroup, note: newNote, alertEnabled: false }]);
@@ -50,7 +65,7 @@ export default function Watchlist() {
     const nextEnabled = !item.alertEnabled;
     setWatchlist(prev => prev.map(w => w.code === code ? { ...w, alertEnabled: nextEnabled } : w));
 
-    const stock = stockList.find(s => s.code === code);
+    const stock = stockMap.get(code);
     const currentPrice = quoteMap.get(code)?.price ?? stock?.price ?? item.alertPrice ?? 0;
     const alerts = getAlerts();
     const watchAlertId = `watchlist-${code}`;
@@ -73,14 +88,36 @@ export default function Watchlist() {
     <div className="space-y-3">
       {/* Add */}
       <div className="panel p-3 flex flex-wrap items-end gap-2">
-        <div>
+        <div className="relative">
           <label className="text-xs text-t-textDim mb-1 block">股票代码/名称</label>
-          <select value={newCode} onChange={e => setNewCode(e.target.value)} className="bg-t-bg border border-t-border rounded px-2 py-1 text-sm text-t-text outline-none min-w-[160px]">
-            <option value="">选择股票</option>
-            {stockList.filter(s => !watchlist.find(w => w.code === s.code)).map(s =>
-              <option key={s.code} value={s.code}>{s.code} {s.name}</option>
-            )}
-          </select>
+          <input
+            value={newCode}
+            onChange={event => setNewCode(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') addStock();
+              if (event.key === 'Escape') setNewCode('');
+            }}
+            placeholder="输入代码/名称/行业"
+            className="bg-t-bg border border-t-border rounded px-2 py-1 text-sm text-t-text outline-none min-w-[220px] placeholder-t-textDim/60"
+          />
+          {candidates.length > 0 && (
+            <div className="absolute left-0 top-[58px] z-50 w-[320px] max-h-72 overflow-y-auto rounded border border-t-border bg-t-panel shadow-xl scrollbar-thin">
+              {candidates.map(stock => (
+                <button
+                  key={stock.code}
+                  type="button"
+                  onMouseDown={event => {
+                    event.preventDefault();
+                    setNewCode(stock.code);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs hover:bg-white/[0.04] flex items-center justify-between gap-3"
+                >
+                  <span className="text-t-text truncate">{stock.name}</span>
+                  <span className="data-num text-t-textDim whitespace-nowrap">{stock.code}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div>
           <label className="text-xs text-t-textDim mb-1 block">分组</label>
@@ -124,7 +161,7 @@ export default function Watchlist() {
             </thead>
             <tbody>
               {filtered.map((w, i) => {
-                const stock = stockList.find(s => s.code === w.code);
+                const stock = stockMap.get(w.code);
                 if (!stock) return null;
                 const realtime = quoteMap.get(w.code);
                 const price = realtime?.price ?? stock.price;

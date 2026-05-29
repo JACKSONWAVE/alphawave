@@ -18,13 +18,13 @@ import {
   Target,
 } from 'lucide-react';
 
-import { calcMA, getCoreStockList, getKlineData, getMarketIndex, getTrend, type TradeRecord } from '../data/mockData';
+import { calcMA, getCoreStockList, getKlineData, getMarketIndex, getStockList, getTrend, type TradeRecord } from '../data/mockData';
 import { calcIndicatorScore, calcSupportResistance } from '../data/analysisEngine';
 import { buildMarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
 import { buildHoldingAdvice, buildHoldingPositions, buildTradeGuard, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
-import { buildQuantCandidates } from '../data/quantPlaybook';
+import { buildDailyStrategyPicks } from '../data/strategyScreener';
 import { buildDataFreshness, buildRequirementAudit, type SystemAuditItem } from '../data/systemAudit';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
@@ -77,7 +77,7 @@ function laneAction(lane: DeskLane, entryLow: number, entryHigh: number, stopLos
   return `持有观察，目标 ${formatPrice(target)}`;
 }
 
-function buildDeskStocks(staticStocks: ReturnType<typeof getStockList>, realtimeQuotes: ReturnType<typeof useRealtimeQuotes>['quotes']): DeskStock[] {
+function buildDeskStocks(staticStocks: ReturnType<typeof getCoreStockList>, realtimeQuotes: ReturnType<typeof useRealtimeQuotes>['quotes']): DeskStock[] {
   const rtMap = new Map(realtimeQuotes.map(quote => [quote.code, quote]));
   return staticStocks.map(stock => {
     const realtime = rtMap.get(stock.code);
@@ -123,6 +123,7 @@ function buildDeskStocks(staticStocks: ReturnType<typeof getStockList>, realtime
 
 export default function Dashboard() {
   const indexData = useMemo(() => getMarketIndex(), []);
+  const allStocks = useMemo(() => getStockList(), []);
   const staticStocks = useMemo(() => getCoreStockList(), []);
   const stockOrder = useMemo(() => new Map(staticStocks.map((stock, index) => [stock.code, index])), [staticStocks]);
   const { quotes: realtimeQuotes, loading, refresh } = useRealtimeQuotes({});
@@ -142,8 +143,8 @@ export default function Dashboard() {
   const riskStocks = useMemo(() => deskStocks
     .filter(stock => stock.lane === '风险减仓')
     .sort((a, b) => a.score - b.score || (stockOrder.get(a.code) || 0) - (stockOrder.get(b.code) || 0)), [deskStocks, stockOrder]);
-  const rising = deskStocks.filter(stock => stock.changePct >= 0).length;
-  const marketHeat = Math.round(rising / Math.max(deskStocks.length, 1) * 100);
+  const rising = allStocks.filter(stock => stock.changePct >= 0).length;
+  const marketHeat = Math.round(rising / Math.max(allStocks.length, 1) * 100);
   const marketContext = useMemo(() => selected ? buildMarketContext(selected.code, getKlineData(selected.code)) : null, [selected]);
   const command = actionStocks[0] || selected;
   const selectedRealtime = realtimeQuotes.find(quote => quote.code === selected?.code);
@@ -155,7 +156,7 @@ export default function Dashboard() {
   const holdingAdvice = selected && selectedPlan
     ? buildHoldingAdvice({ position: selectedPosition, currentPrice: selected.price, plan: selectedPlan, scoreOverall: selected.score, marketHeat })
     : null;
-  const quantCandidates = useMemo(() => buildQuantCandidates(), [realtimeQuotes]);
+  const dailyPicks = useMemo(() => buildDailyStrategyPicks(10), [realtimeQuotes]);
   const auditItems = useMemo(() => buildRequirementAudit(), []);
   const freshness = useMemo(() => buildDataFreshness(), []);
   const doneCount = auditItems.filter(item => item.status === 'done').length;
@@ -171,6 +172,44 @@ export default function Dashboard() {
   return (
     <div className="space-y-3">
       <RealtimeStatus />
+
+      <section className="panel overflow-hidden">
+        <div className="px-4 py-3 border-b border-t-border bg-[#131722] flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2">
+              <Target className="w-4 h-4 text-t-red" /> 今日全市场 Top 10 策略池
+            </h2>
+            <p className="text-[11px] text-t-textDim mt-1">从 {allStocks.length} 只沪深京股票中筛选，优先看龙头突破、量价突破、MACD/KDJ/RSI 共振和趋势回踩。</p>
+          </div>
+          <div className="text-right text-xs data-num">
+            <div className="text-t-red font-bold">{dailyPicks.length} 只入选</div>
+            <div className="text-t-textDim">全市场热度 {marketHeat}%</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-0">
+          {dailyPicks.map((pick, index) => (
+            <Link key={pick.code} to={`/analysis?code=${pick.code}`} className="p-3 border-r border-b border-t-border hover:bg-white/[0.035] transition-colors min-h-[154px]">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] data-num text-t-textDim">#{index + 1} {pick.code}</div>
+                  <div className="text-sm font-semibold text-t-textBright truncate">{pick.name}</div>
+                </div>
+                <span className={`text-lg font-bold data-num ${pick.score >= 70 ? 'text-t-red' : 'text-t-yellow'}`}>{pick.score}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+                <span className="px-1.5 py-0.5 rounded bg-t-blue/10 text-t-blue border border-t-blue/20">{pick.strategy}</span>
+                <span className={pick.changePct >= 0 ? 'text-t-red data-num' : 'text-t-green data-num'}>{formatPct(pick.changePct)}</span>
+              </div>
+              <div className="mt-2 space-y-1 text-[11px] text-t-textDim">
+                <div className="truncate">买区 {pick.entry}</div>
+                <div className="truncate">止损 {pick.stop} · 目标 {pick.target}</div>
+                <div className="truncate text-t-textSecondary">{pick.reason}</div>
+              </div>
+              <div className="mt-2 text-[10px] text-t-textDim">{pick.hasDeepData ? '10 年 K 线共振' : '全市场快筛，待补深度 K 线'}</div>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-3">
         <div className="panel p-3">
@@ -213,18 +252,18 @@ export default function Dashboard() {
                 <div className={`text-right data-num font-bold ${item.status === 'bad' ? 'text-t-green' : 'text-t-yellow'}`}>{item.qualityScore}</div>
               </div>
             ))}
-            {quantCandidates.slice(0, 3).map(candidate => (
+            {dailyPicks.slice(0, 3).map(candidate => (
               <div key={candidate.code} className="grid grid-cols-[1fr_auto] gap-2 border border-t-border rounded p-2 bg-white/[0.02]">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-t-textBright">{candidate.name}</span>
-                    <span className="text-[10px] text-t-textDim">{candidate.bestStrategy}</span>
+                    <span className="text-[10px] text-t-textDim">{candidate.strategy}</span>
                   </div>
-                  <div className="text-[11px] text-t-textDim truncate">买区 {candidate.entry}｜止损/目标 {candidate.exit}</div>
+                  <div className="text-[11px] text-t-textDim truncate">买区 {candidate.entry} · 止损 {candidate.stop} · 目标 {candidate.target}</div>
                 </div>
                 <div className="text-right data-num">
-                  <div className={candidate.rankScore >= 45 ? 'text-t-red font-bold' : 'text-t-yellow font-bold'}>{candidate.rankScore}</div>
-                  <div className="text-[10px] text-t-textDim">胜率 {candidate.winRate}%</div>
+                  <div className={candidate.score >= 65 ? 'text-t-red font-bold' : 'text-t-yellow font-bold'}>{candidate.score}</div>
+                  <div className="text-[10px] text-t-textDim">置信 {candidate.confidence}%</div>
                 </div>
               </div>
             ))}
@@ -251,8 +290,8 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-t-border">
-            <CommandMetric icon={Activity} label="市场温度" value={`${marketHeat}%`} tone={marketHeat >= 65 ? 'text-t-red' : marketHeat <= 35 ? 'text-t-green' : 'text-t-yellow'} detail={`${rising}/${deskStocks.length} 上涨`} />
-            <CommandMetric icon={Crosshair} label="可操作" value={`${actionStocks.length}只`} tone="text-t-red" detail="符合试错条件" />
+            <CommandMetric icon={Activity} label="市场温度" value={`${marketHeat}%`} tone={marketHeat >= 65 ? 'text-t-red' : marketHeat <= 35 ? 'text-t-green' : 'text-t-yellow'} detail={`${rising}/${allStocks.length} 上涨`} />
+            <CommandMetric icon={Crosshair} label="Top策略" value={`${dailyPicks.length}只`} tone="text-t-red" detail="全市场模型入选" />
             <CommandMetric icon={ShieldCheck} label="风险票" value={`${riskStocks.length}只`} tone={riskStocks.length ? 'text-t-green' : 'text-t-text'} detail="需减仓/止损关注" />
             <CommandMetric icon={Bot} label="持仓跟踪" value={`${holdings.length}只`} tone="text-t-blue" detail="按底仓/波段处理" />
           </div>
