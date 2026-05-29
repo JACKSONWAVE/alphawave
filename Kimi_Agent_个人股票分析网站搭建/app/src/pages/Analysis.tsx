@@ -236,7 +236,7 @@ export default function Analysis() {
           {indicators.includes('wr') && <SubChart data={chartData} dataKey="wr" label="WR(14)" color="#14b8a6" domain={[-100, 0]} refs={[{ y: -20, color: '#ef4444' }, { y: -80, color: '#22c55e' }]} />}
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 lg:sticky lg:top-3 lg:self-start lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto scrollbar-thin pr-1">
           <div className="flex border-b border-t-border">
             {(['plan', 'signals', 'backtest', 'market'] as SideTab[]).map(tab => (
               <button key={tab} onClick={() => setSideTab(tab)} className={`flex-1 py-1.5 text-xs ${sideTab === tab ? 'text-t-blue border-b-2 border-t-blue' : 'text-t-textDim hover:text-t-text'}`}>
@@ -328,6 +328,8 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
 
       <TechnicalConsensusPanel report={technicalReport} />
 
+      <CompactDecisionPanel plan={plan} supportResistance={supportResistance} score={score} />
+
       <div className="panel p-3 border border-t-blue/20">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div>
@@ -370,44 +372,6 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
             ? tradeGuard.reasons.slice(0, 5).map(reason => <p key={reason}>· {reason}</p>)
             : <p>主要条件通过，但仍按计划价、止损价和仓位上限执行。</p>}
         </div>
-      </div>
-
-      <div className="panel p-3">
-        <h3 className="text-sm font-semibold text-t-textBright mb-2">走势剧本</h3>
-        <div className="space-y-2">
-          {plan.scenarios.map(scenario => (
-            <div key={scenario.name} className="border border-t-border rounded p-2 bg-white/[0.02]">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-t-text">{scenario.name}</span>
-                <span className="text-[10px] text-t-textDim data-num">{scenario.probability}%</span>
-              </div>
-              <p className="text-[11px] text-t-textDim leading-relaxed">{scenario.condition}</p>
-              <p className="text-[11px] text-t-textSecondary leading-relaxed mt-1">{scenario.action}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="panel p-3">
-        <h3 className="text-sm font-semibold text-t-textBright mb-2">中期波段策略</h3>
-        <div className="flex items-center gap-2 mb-3">
-          <div className={`text-2xl font-bold data-num ${score.overall >= 30 ? 'text-t-red' : score.overall <= -30 ? 'text-t-green' : 'text-t-yellow'}`}>{score.overall}</div>
-          <div>
-            <div className={`text-xs font-medium ${score.overall >= 30 ? 'text-t-red' : score.overall <= -30 ? 'text-t-green' : 'text-t-yellow'}`}>
-              {score.signal === 'strong_buy' ? '强烈看多' : score.signal === 'buy' ? '看多' : score.signal === 'strong_sell' ? '强烈看空' : score.signal === 'sell' ? '看空' : '中性观察'}
-            </div>
-            <div className="w-20 h-1.5 bg-t-border rounded-full overflow-hidden mt-0.5">
-              <div className={`h-full rounded-full ${score.overall >= 0 ? 'bg-t-red' : 'bg-t-green'}`} style={{ width: `${Math.abs(score.overall)}%` }} />
-            </div>
-          </div>
-        </div>
-        <Row label="强支撑" value={formatPrice(supportResistance.strongSupport)} color="text-t-green" />
-        <Row label="弱支撑" value={formatPrice(supportResistance.weakSupport)} color="text-t-green/70" />
-        <Row label="当前价" value={formatPrice(supportResistance.currentPrice)} color="text-t-textBright" />
-        <Row label="弱压力" value={formatPrice(supportResistance.weakResistance)} color="text-t-red/70" />
-        <Row label="强压力" value={formatPrice(supportResistance.strongResistance)} color="text-t-red" />
-        <Row label="目标价" value={formatPrice(supportResistance.targetPrice)} color="text-t-blue" />
-        <Row label="止损位" value={formatPrice(supportResistance.stopLoss)} color="text-t-red" />
       </div>
 
       <div className="panel p-3">
@@ -475,6 +439,58 @@ function TechnicalConsensusPanel({ report }: { report: TechnicalSignalReport }) 
             <span className="data-num text-t-textBright">{event.side === 'bullish' ? '+' : event.side === 'bearish' ? '-' : ''}{event.weight}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function CompactDecisionPanel({ plan, supportResistance, score }: {
+  plan: StrategyPlan;
+  supportResistance: ReturnType<typeof calcSupportResistance>;
+  score: ReturnType<typeof calcIndicatorScore>;
+}) {
+  const topScenario = [...plan.scenarios].sort((a, b) => b.probability - a.probability)[0];
+  const signalText = score.signal === 'strong_buy'
+    ? '强烈看多'
+    : score.signal === 'buy'
+      ? '看多'
+      : score.signal === 'strong_sell'
+        ? '强烈看空'
+        : score.signal === 'sell'
+          ? '看空'
+          : '中性观察';
+  const tone = score.overall >= 30 ? 'text-t-red' : score.overall <= -30 ? 'text-t-green' : 'text-t-yellow';
+  return (
+    <div className="panel p-3 border border-t-yellow/25 bg-t-yellow/5">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-t-textBright">核心走势与波段</h3>
+          <p className="text-[11px] text-t-textDim mt-0.5">把原来需要下滑看的走势剧本和中期策略合到这里。</p>
+        </div>
+        <div className="text-right">
+          <div className={`text-2xl font-bold data-num ${tone}`}>{score.overall}</div>
+          <div className={`text-[10px] font-medium ${tone}`}>{signalText}</div>
+        </div>
+      </div>
+
+      {topScenario && (
+        <div className="rounded border border-t-border bg-white/[0.03] p-2 mb-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-t-textBright">{topScenario.name}</span>
+            <span className="text-[10px] data-num text-t-yellow">{topScenario.probability}%</span>
+          </div>
+          <p className="text-[11px] text-t-textDim mt-1 leading-relaxed">{topScenario.condition}</p>
+          <p className="text-[11px] text-t-textSecondary mt-1 leading-relaxed">{topScenario.action}</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+        <Row label="当前价" value={formatPrice(supportResistance.currentPrice)} color="text-t-textBright" />
+        <Row label="弱支撑" value={formatPrice(supportResistance.weakSupport)} color="text-t-green" />
+        <Row label="强支撑" value={formatPrice(supportResistance.strongSupport)} color="text-t-green" />
+        <Row label="弱压力" value={formatPrice(supportResistance.weakResistance)} color="text-t-red" />
+        <Row label="目标价" value={formatPrice(supportResistance.targetPrice)} color="text-t-blue" />
+        <Row label="止损位" value={formatPrice(supportResistance.stopLoss)} color="text-t-red" />
       </div>
     </div>
   );
