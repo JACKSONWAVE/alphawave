@@ -1,4 +1,4 @@
-import { getMarketIndex, getStockList, type KlineData } from './mockData';
+import { getCoreStockList, getMarketIndex, type KlineData } from './mockData';
 import { formatPct } from './price';
 
 export interface MarketContext {
@@ -21,7 +21,7 @@ function avg(values: number[]) {
 
 export function buildMarketContext(code: string, data: KlineData[]): MarketContext {
   const indexes = getMarketIndex();
-  const stocks = getStockList();
+  const stocks = getCoreStockList();
   const stock = stocks.find(item => item.code === code);
   const sectorPeers = stocks.filter(item => item.industry === stock?.industry);
   const marketChange = avg(indexes.map(index => index.changePct || 0));

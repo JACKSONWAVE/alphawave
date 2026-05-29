@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tsPath = resolve(root, 'src/assets/data/stockData.ts');
 const jsonPath = resolve(root, 'src/assets/data/stockData.json');
+const universeJsonPath = resolve(root, 'src/assets/data/stockUniverse.json');
 
 function toSecId(code) {
   const [num, market] = code.split('.');
@@ -53,17 +54,14 @@ async function fetchKline(code) {
   });
 }
 
-function parseStockData(source) {
-  const marker = 'export const stockData =';
-  const start = source.indexOf(marker);
-  if (start < 0) throw new Error('stockData export not found');
-  const jsonLike = source.slice(start + marker.length).replace(/;\s*$/, '').trim();
-  return Function(`"use strict"; return (${jsonLike});`)();
-}
-
 async function main() {
-  const source = await readFile(tsPath, 'utf8');
-  const stockData = parseStockData(source);
+  const stockData = JSON.parse(await readFile(jsonPath, 'utf8'));
+  let universe = { stocks: {} };
+  try {
+    universe = JSON.parse(await readFile(universeJsonPath, 'utf8'));
+  } catch {
+    // Universe is optional for old worktrees.
+  }
   const requested = [
     ...process.argv.slice(2),
     ...(process.env.CODES || '').split(','),
@@ -72,8 +70,19 @@ async function main() {
 
   for (const code of codes) {
     if (!stockData.stocks[code]) {
-      console.log(`skip ${code}: not in stockData.stocks yet`);
-      continue;
+      const meta = universe.stocks?.[code];
+      if (!meta) {
+        console.log(`skip ${code}: not in stockData or stockUniverse`);
+        continue;
+      }
+      stockData.stocks[code] = {
+        name: meta.name || code,
+        industry: meta.industry || '未分类',
+        latest: meta.latest || {},
+        high52w: meta.high52w || 0,
+        low52w: meta.low52w || 0,
+        kline: [],
+      };
     }
     const kline = await fetchKline(code);
     if (!kline || kline.length === 0) {

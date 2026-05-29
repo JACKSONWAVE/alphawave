@@ -1,5 +1,6 @@
 // 数据层：优先真实数据，fallback到mock
 import { stockData } from '../assets/data/stockData';
+import { stockUniverse } from '../assets/data/stockUniverse';
 
 export interface KlineData {
   date: string; open: number; high: number; low: number; close: number;
@@ -11,15 +12,30 @@ export interface StockInfo {
   changePct: number; volume: number; open: number; high: number; low: number;
 }
 
+export interface StockListItem {
+  code: string; name: string; price: number; change: number; changePct: number;
+  volume: string; industry: string; high52w: number; low52w: number;
+  pe: number; pb: number; marketCap: number | string; hasKline: boolean;
+}
+
+const localStocks = stockData.stocks || {};
+const universeStocks = stockUniverse.stocks || {};
+let stockListCache: StockListItem[] | null = null;
+let coreStockListCache: StockListItem[] | null = null;
+
+function getStockRecord(code: string) {
+  return localStocks[code] || universeStocks[code];
+}
+
 // ── 获取K线数据 ──
 export function getKlineData(code: string, days?: number): KlineData[] {
-  const real = stockData.stocks[code]?.kline;
+  const real = localStocks[code]?.kline;
   if (real && real.length > 0) {
     if (days) return real.slice(-days);
     return real;
   }
   // fallback: 生成mock
-  const info = stockData.stocks[code];
+  const info = getStockRecord(code);
   return generateMockKline(days || 120, info?.latest?.price || 50);
 }
 
@@ -42,15 +58,17 @@ function generateMockKline(days: number, basePrice: number): KlineData[] {
 
 // ── 股票信息 ──
 export function getStockInfo(code: string): StockInfo & { high52w: number; low52w: number } {
-  const s = stockData.stocks[code];
+  const s = getStockRecord(code);
   if (!s) return { code, name: code, industry: '', price: 0, change: 0, changePct: 0, volume: 0, open: 0, high: 0, low: 0, high52w: 0, low52w: 0 };
-  const l = s.latest;
-  return { code, name: s.name, industry: s.industry, price: l.price, change: l.change, changePct: l.changePct, volume: l.volume, open: l.open, high: l.high, low: l.low, high52w: s.high52w, low52w: s.low52w };
+  const l = s.latest || {};
+  return { code, name: s.name, industry: s.industry, price: l.price || 0, change: l.change || 0, changePct: l.changePct || 0, volume: l.volume || 0, open: l.open || 0, high: l.high || 0, low: l.low || 0, high52w: s.high52w || 0, low52w: s.low52w || 0 };
 }
 
-export function getAllCodes(): string[] { return Object.keys(stockData.stocks); }
+export function getAllCodes(): string[] { return Array.from(new Set([...Object.keys(universeStocks), ...Object.keys(localStocks)])); }
 
-export function getStockName(code: string): string { return stockData.stocks[code]?.name || code; }
+export function getCoreCodes(): string[] { return Object.keys(localStocks); }
+
+export function getStockName(code: string): string { return getStockRecord(code)?.name || code; }
 
 export function getMarketIndex() {
   return Object.entries(stockData.indexes).map(([code, d]) => ({ code, name: d.name, price: d.price, change: d.change, changePct: d.changePct }));
@@ -58,16 +76,34 @@ export function getMarketIndex() {
 
 // ── 股票列表 ──
 export function getStockList() {
-  return getAllCodes().map(code => {
+  if (stockListCache) return stockListCache;
+  stockListCache = getAllCodes().map(code => {
     const s = getStockInfo(code);
-    const hasKline = (stockData.stocks[code]?.kline?.length || 0) > 0;
+    const record = getStockRecord(code);
+    const hasKline = (localStocks[code]?.kline?.length || 0) > 0;
     return {
       code, name: s.name, price: s.price, change: s.change, changePct: s.changePct,
       volume: s.volume > 0 ? (s.volume > 100000000 ? (s.volume / 100000000).toFixed(1) + '亿' : (s.volume / 10000).toFixed(0) + '万') : '-',
       industry: s.industry, high52w: s.high52w, low52w: s.low52w,
-      pe: 0, pb: 0, marketCap: '', hasKline,
+      pe: record?.pe || 0, pb: record?.pb || 0, marketCap: record?.marketCap || '', hasKline,
     };
   });
+  return stockListCache;
+}
+
+export function getCoreStockList() {
+  if (coreStockListCache) return coreStockListCache;
+  coreStockListCache = getCoreCodes().map(code => {
+    const s = getStockInfo(code);
+    const record = getStockRecord(code);
+    return {
+      code, name: s.name, price: s.price, change: s.change, changePct: s.changePct,
+      volume: s.volume > 0 ? (s.volume > 100000000 ? (s.volume / 100000000).toFixed(1) + '亿' : (s.volume / 10000).toFixed(0) + '万') : '-',
+      industry: s.industry, high52w: s.high52w, low52w: s.low52w,
+      pe: record?.pe || 0, pb: record?.pb || 0, marketCap: record?.marketCap || '', hasKline: true,
+    };
+  });
+  return coreStockListCache;
 }
 
 // ── 技术指标 ──

@@ -18,7 +18,7 @@ import {
   Target,
 } from 'lucide-react';
 
-import { calcMA, getKlineData, getMarketIndex, getStockList, getTrend, type TradeRecord } from '../data/mockData';
+import { calcMA, getCoreStockList, getKlineData, getMarketIndex, getTrend, type TradeRecord } from '../data/mockData';
 import { calcIndicatorScore, calcSupportResistance } from '../data/analysisEngine';
 import { buildMarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
@@ -123,7 +123,7 @@ function buildDeskStocks(staticStocks: ReturnType<typeof getStockList>, realtime
 
 export default function Dashboard() {
   const indexData = useMemo(() => getMarketIndex(), []);
-  const staticStocks = useMemo(() => getStockList(), []);
+  const staticStocks = useMemo(() => getCoreStockList(), []);
   const stockOrder = useMemo(() => new Map(staticStocks.map((stock, index) => [stock.code, index])), [staticStocks]);
   const { quotes: realtimeQuotes, loading, refresh } = useRealtimeQuotes({});
   const [trades] = useLocalStorage<TradeRecord[]>('trades', []);

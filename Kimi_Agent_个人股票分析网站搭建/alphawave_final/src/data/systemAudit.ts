@@ -1,4 +1,4 @@
-import { getAllCodes, getKlineData, getStockInfo } from './mockData';
+import { getCoreCodes, getKlineData, getStockInfo } from './mockData';
 
 export interface SystemAuditItem {
   id: number;
@@ -26,7 +26,7 @@ export interface DataFreshness {
 
 export function buildDataFreshness(): DataFreshness[] {
   const today = new Date();
-  return getAllCodes().map(code => {
+  return getCoreCodes().map(code => {
     const kline = getKlineData(code);
     const first = kline[0];
     const last = kline[kline.length - 1];

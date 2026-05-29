@@ -1,7 +1,7 @@
 import { buildBacktestSuite } from './backtestLab';
 import { calcIndicatorScore } from './analysisEngine';
 import { buildMarketContext } from './marketContext';
-import { getKlineData, getStockInfo, getStockList } from './mockData';
+import { getCoreStockList, getKlineData, getStockInfo } from './mockData';
 import { buildStrategyPlan } from './strategyEngine';
 import { buildTradeGuard } from './tradeGuard';
 import { formatPrice } from './price';
@@ -21,7 +21,7 @@ export interface QuantCandidate {
 }
 
 export function buildQuantCandidates(): QuantCandidate[] {
-  return getStockList().map(stock => {
+  return getCoreStockList().map(stock => {
     const kline = getKlineData(stock.code);
     const latest = kline[kline.length - 1];
     const info = getStockInfo(stock.code);
@@ -62,4 +62,3 @@ export function buildQuantCandidates(): QuantCandidate[] {
     };
   }).sort((a, b) => b.rankScore - a.rankScore);
 }
-
