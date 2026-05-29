@@ -15,22 +15,65 @@ export interface DataFreshness {
   lastDate: string;
   isTenYear: boolean;
   isFresh: boolean;
+  staleDays: number;
+  missingGaps: number;
+  abnormalMoves: number;
+  zeroVolumeDays: number;
+  qualityScore: number;
+  status: 'healthy' | 'watch' | 'bad';
+  note: string;
 }
 
 export function buildDataFreshness(): DataFreshness[] {
+  const today = new Date();
   return getAllCodes().map(code => {
     const kline = getKlineData(code);
     const first = kline[0];
     const last = kline[kline.length - 1];
     const info = getStockInfo(code);
+    let missingGaps = 0;
+    let abnormalMoves = 0;
+    let zeroVolumeDays = 0;
+
+    for (let index = 1; index < kline.length; index++) {
+      const previous = kline[index - 1];
+      const current = kline[index];
+      const gapDays = Math.floor((new Date(current.date).getTime() - new Date(previous.date).getTime()) / 86400000);
+      if (gapDays > 10) missingGaps += 1;
+      const changePct = previous.close ? Math.abs((current.close - previous.close) / previous.close * 100) : 0;
+      if (changePct > 25) abnormalMoves += 1;
+      if (!current.volume) zeroVolumeDays += 1;
+    }
+
+    const lastTime = last?.date ? new Date(last.date).getTime() : 0;
+    const staleDays = lastTime ? Math.max(0, Math.floor((today.getTime() - lastTime) / 86400000)) : 999;
+    const isTenYear = kline.length >= 2300;
+    const isFresh = staleDays <= 3;
+    const penalties = (isTenYear ? 0 : 18) + (isFresh ? 0 : Math.min(28, staleDays * 2)) + missingGaps * 8 + abnormalMoves * 4 + zeroVolumeDays * 2;
+    const qualityScore = Math.max(0, Math.min(100, 100 - penalties));
+    const status = qualityScore >= 82 ? 'healthy' : qualityScore >= 62 ? 'watch' : 'bad';
+    const note = [
+      isTenYear ? '10年样本' : '样本不足',
+      isFresh ? '近期更新' : `滞后${staleDays}天`,
+      missingGaps ? `${missingGaps}处长缺口` : '无长缺口',
+      abnormalMoves ? `${abnormalMoves}处异常波动` : '波动正常',
+    ].join(' / ');
+
     return {
       code,
       name: info.name,
       days: kline.length,
       firstDate: first?.date || '-',
       lastDate: last?.date || '-',
-      isTenYear: kline.length >= 2300,
-      isFresh: Boolean(last?.date && last.date >= new Date().toISOString().slice(0, 10)),
+      isTenYear,
+      isFresh,
+      staleDays,
+      missingGaps,
+      abnormalMoves,
+      zeroVolumeDays,
+      qualityScore,
+      status,
+      note,
     };
   });
 }
@@ -53,4 +96,3 @@ export function buildRequirementAudit(): SystemAuditItem[] {
     { id: 14, title: '分时与日内策略', status: 'done', detail: '分时周期已接入腾讯分钟数据，并输出日内波段策略。' },
   ];
 }
-

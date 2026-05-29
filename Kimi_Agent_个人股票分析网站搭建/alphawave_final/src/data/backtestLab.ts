@@ -6,6 +6,8 @@ export interface StrategyTrade {
   exitDate: string;
   entry: number;
   exit: number;
+  grossReturnPct: number;
+  costPct: number;
   returnPct: number;
   holdingDays: number;
   reason: string;
@@ -23,11 +25,19 @@ export interface StrategyBacktestResult {
   worstReturn: number;
   maxDrawdown: number;
   avgHoldingDays: number;
+  avgWin: number;
+  avgLoss: number;
+  payoffRatio: number;
+  profitFactor: number;
+  expectancy: number;
+  maxConsecutiveLosses: number;
+  costModel: string;
   trades: StrategyTrade[];
   verdict: string;
 }
 
 const pct = (value: number) => +value.toFixed(2);
+const ROUND_TRIP_COST_PCT = 0.18;
 
 function maxDrawdown(data: KlineData[]) {
   let peak = data[0]?.close || 0;
@@ -39,6 +49,20 @@ function maxDrawdown(data: KlineData[]) {
   return pct(drawdown);
 }
 
+function maxConsecutiveLosses(returns: number[]) {
+  let maxLosses = 0;
+  let current = 0;
+  returns.forEach(value => {
+    if (value <= 0) {
+      current += 1;
+      maxLosses = Math.max(maxLosses, current);
+    } else {
+      current = 0;
+    }
+  });
+  return maxLosses;
+}
+
 function summarize(
   id: string,
   name: string,
@@ -48,16 +72,27 @@ function summarize(
   data: KlineData[],
 ): StrategyBacktestResult {
   const sampleSize = trades.length;
-  const returns = trades.map(t => t.returnPct);
-  const wins = returns.filter(r => r > 0).length;
+  const returns = trades.map(trade => trade.returnPct);
+  const winReturns = returns.filter(value => value > 0);
+  const lossReturns = returns.filter(value => value <= 0);
+  const wins = winReturns.length;
   const avgReturn = sampleSize ? returns.reduce((sum, value) => sum + value, 0) / sampleSize : 0;
-  const avgHoldingDays = sampleSize ? trades.reduce((sum, t) => sum + t.holdingDays, 0) / sampleSize : 0;
+  const avgHoldingDays = sampleSize ? trades.reduce((sum, trade) => sum + trade.holdingDays, 0) / sampleSize : 0;
   const winRate = sampleSize ? wins / sampleSize * 100 : 0;
-  const verdict = winRate >= 62 && avgReturn > 1
-    ? '可作为主策略候选，重点看回撤是否能接受'
-    : winRate >= 52
-      ? '可作为辅助策略，适合和大盘/行业过滤叠加'
-      : '单独使用不稳，需要更严格的过滤条件';
+  const avgWin = winReturns.length ? winReturns.reduce((sum, value) => sum + value, 0) / winReturns.length : 0;
+  const avgLoss = lossReturns.length ? lossReturns.reduce((sum, value) => sum + value, 0) / lossReturns.length : 0;
+  const grossProfit = winReturns.reduce((sum, value) => sum + value, 0);
+  const grossLoss = Math.abs(lossReturns.reduce((sum, value) => sum + value, 0));
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 9.99 : 0;
+  const payoffRatio = Math.abs(avgLoss) > 0 ? avgWin / Math.abs(avgLoss) : avgWin > 0 ? 9.99 : 0;
+  const expectancy = avgReturn;
+  const verdict = sampleSize < 12
+    ? '样本偏少，只能作为观察策略，不能直接放大仓位。'
+    : winRate >= 58 && profitFactor >= 1.35 && expectancy > 0.6
+      ? '具备主策略候选价值，重点跟踪回撤和连续亏损是否可接受。'
+      : winRate >= 50 && profitFactor >= 1
+        ? '可作为辅助策略，适合叠加大盘、行业和风控过滤。'
+        : '单独使用不稳定，需要更严格的过滤条件或降低仓位。';
 
   return {
     id,
@@ -71,6 +106,13 @@ function summarize(
     worstReturn: sampleSize ? pct(Math.min(...returns)) : 0,
     maxDrawdown: maxDrawdown(data),
     avgHoldingDays: pct(avgHoldingDays),
+    avgWin: pct(avgWin),
+    avgLoss: pct(avgLoss),
+    payoffRatio: pct(payoffRatio),
+    profitFactor: pct(profitFactor),
+    expectancy: pct(expectancy),
+    maxConsecutiveLosses: maxConsecutiveLosses(returns),
+    costModel: `双边滑点与交易成本约${ROUND_TRIP_COST_PCT}%`,
     trades,
     verdict,
   };
@@ -86,25 +128,28 @@ function exitTrade(data: KlineData[], entryIndex: number, stopPct: number, targe
   let exitIndex = lastIndex;
   let exit = data[lastIndex].close;
 
-  for (let i = entryIndex + 1; i <= lastIndex; i++) {
-    if (data[i].low <= stop) {
-      exitIndex = i;
+  for (let index = entryIndex + 1; index <= lastIndex; index++) {
+    if (data[index].low <= stop) {
+      exitIndex = index;
       exit = stop;
       break;
     }
-    if (data[i].high >= target) {
-      exitIndex = i;
+    if (data[index].high >= target) {
+      exitIndex = index;
       exit = target;
       break;
     }
   }
 
+  const grossReturnPct = (exit - entry.close) / entry.close * 100;
   return {
     entryDate: entry.date,
     exitDate: data[exitIndex].date,
     entry: roundPrice(entry.close),
     exit: roundPrice(exit),
-    returnPct: pct((exit - entry.close) / entry.close * 100),
+    grossReturnPct: pct(grossReturnPct),
+    costPct: ROUND_TRIP_COST_PCT,
+    returnPct: pct(grossReturnPct - ROUND_TRIP_COST_PCT),
     holdingDays: exitIndex - entryIndex,
     reason,
   };
@@ -116,60 +161,60 @@ function backtestTrendPullback(data: KlineData[]) {
   const rsi = calcRSI(data, 14);
   const trades: StrategyTrade[] = [];
 
-  for (let i = 61; i < data.length - 2; i++) {
-    const inUptrend = ma20[i]! > ma60[i]! && data[i].close >= ma60[i]!;
-    const pullback = data[i].low <= ma20[i]! * 1.015 && data[i].close >= ma20[i]! * 0.985;
-    const cooled = (rsi[i] || 50) >= 38 && (rsi[i] || 50) <= 62;
+  for (let index = 61; index < data.length - 2; index++) {
+    const inUptrend = ma20[index]! > ma60[index]! && data[index].close >= ma60[index]!;
+    const pullback = data[index].low <= ma20[index]! * 1.015 && data[index].close >= ma20[index]! * 0.985;
+    const cooled = (rsi[index] || 50) >= 38 && (rsi[index] || 50) <= 62;
     if (inUptrend && pullback && cooled) {
-      const trade = exitTrade(data, i, 7, 12, 45, '上升趋势回踩20日线');
+      const trade = exitTrade(data, index, 7, 12, 45, '上升趋势回踩20日线');
       if (trade) trades.push(trade);
-      i += 10;
+      index += 10;
     }
   }
 
-  return summarize('trend_pullback', '趋势回踩', '稳健', '20日线回踩企稳，适合中期底仓加仓', trades.slice(-80), data);
+  return summarize('trend_pullback', '趋势回踩', '稳健', '20日线回踩企稳，适合中期底仓加仓。', trades.slice(-80), data);
 }
 
 function backtestBreakout(data: KlineData[]) {
   const trades: StrategyTrade[] = [];
-  for (let i = 31; i < data.length - 2; i++) {
-    const high20 = Math.max(...data.slice(i - 20, i).map(d => d.high));
-    const avgVolume = data.slice(i - 20, i).reduce((sum, d) => sum + d.volume, 0) / 20;
-    if (data[i].close > high20 * 1.01 && data[i].volume > avgVolume * 1.35) {
-      const trade = exitTrade(data, i, 8, 15, 30, '放量突破20日新高');
+  for (let index = 31; index < data.length - 2; index++) {
+    const high20 = Math.max(...data.slice(index - 20, index).map(day => day.high));
+    const avgVolume = data.slice(index - 20, index).reduce((sum, day) => sum + day.volume, 0) / 20;
+    if (data[index].close > high20 * 1.01 && data[index].volume > avgVolume * 1.35) {
+      const trade = exitTrade(data, index, 8, 15, 30, '放量突破20日新高');
       if (trade) trades.push(trade);
-      i += 8;
+      index += 8;
     }
   }
-  return summarize('breakout', '放量突破', '进攻', '突破平台或前高，适合小仓位追强确认', trades.slice(-80), data);
+  return summarize('breakout', '放量突破', '进攻', '突破平台或前高，适合小仓位追强确认。', trades.slice(-80), data);
 }
 
 function backtestMeanReversion(data: KlineData[]) {
   const boll = calcBOLL(data);
   const { k } = calcKDJ(data);
   const trades: StrategyTrade[] = [];
-  for (let i = 30; i < data.length - 2; i++) {
-    const lower = boll.lower[i];
-    if (lower && data[i].close < lower && (k[i] || 50) < 25) {
-      const trade = exitTrade(data, i, 5, 8, 15, '布林下轨+KDJ低位反弹');
+  for (let index = 30; index < data.length - 2; index++) {
+    const lower = boll.lower[index];
+    if (lower && data[index].close < lower && (k[index] || 50) < 25) {
+      const trade = exitTrade(data, index, 5, 8, 15, 'BOLL下轨叠加KDJ低位反弹');
       if (trade) trades.push(trade);
-      i += 6;
+      index += 6;
     }
   }
-  return summarize('mean_reversion', '超跌反弹', '均衡', '极端回撤后的短线修复，适合做波段', trades.slice(-80), data);
+  return summarize('mean_reversion', '超跌反弹', '均衡', '极端回撤后的短线修复，适合做波段。', trades.slice(-80), data);
 }
 
 function backtestMacd(data: KlineData[]) {
   const { dif, dea } = calcMACD(data);
   const trades: StrategyTrade[] = [];
-  for (let i = 35; i < data.length - 2; i++) {
-    if (dif[i] > dea[i] && dif[i - 1] <= dea[i - 1] && dif[i] < 0.8) {
-      const trade = exitTrade(data, i, 7, 10, 25, 'MACD低位金叉');
+  for (let index = 35; index < data.length - 2; index++) {
+    if (dif[index] > dea[index] && dif[index - 1] <= dea[index - 1] && dif[index] < 0.8) {
+      const trade = exitTrade(data, index, 7, 10, 25, 'MACD低位金叉');
       if (trade) trades.push(trade);
-      i += 8;
+      index += 8;
     }
   }
-  return summarize('macd_cross', 'MACD低位金叉', '均衡', '动量拐点策略，适合趋势刚转强阶段', trades.slice(-80), data);
+  return summarize('macd_cross', 'MACD低位金叉', '均衡', '动量拐点策略，适合趋势刚转强阶段。', trades.slice(-80), data);
 }
 
 export function buildBacktestSuite(data: KlineData[]): StrategyBacktestResult[] {
@@ -179,5 +224,5 @@ export function buildBacktestSuite(data: KlineData[]): StrategyBacktestResult[] 
     backtestBreakout(data),
     backtestMeanReversion(data),
     backtestMacd(data),
-  ].sort((a, b) => (b.winRate + b.avgReturn) - (a.winRate + a.avgReturn));
+  ].sort((a, b) => (b.profitFactor + b.expectancy + b.winRate / 100) - (a.profitFactor + a.expectancy + a.winRate / 100));
 }

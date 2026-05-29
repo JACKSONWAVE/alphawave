@@ -583,7 +583,12 @@ function BacktestPanel({ results }: { results: StrategyBacktestResult[] }) {
             <Row label="最好" value={`${result.bestReturn}%`} color="text-t-red" />
             <Row label="最差" value={`${result.worstReturn}%`} color="text-t-green" />
             <Row label="均持" value={`${result.avgHoldingDays}天`} color="text-t-blue" />
+            <Row label="盈亏比" value={String(result.payoffRatio)} color={result.payoffRatio >= 1.2 ? 'text-t-red' : 'text-t-yellow'} />
+            <Row label="利润因子" value={String(result.profitFactor)} color={result.profitFactor >= 1.2 ? 'text-t-red' : 'text-t-yellow'} />
+            <Row label="期望收益" value={`${result.expectancy}%`} color={result.expectancy >= 0 ? 'text-t-red' : 'text-t-green'} />
+            <Row label="连续亏损" value={`${result.maxConsecutiveLosses}次`} color={result.maxConsecutiveLosses <= 3 ? 'text-t-blue' : 'text-t-yellow'} />
             <Row label="可信度" value={result.sampleSize >= 20 ? '可参考' : '样本偏少'} color={result.sampleSize >= 20 ? 'text-t-red' : 'text-t-yellow'} />
+            <Row label="成本模型" value={result.costModel} color="text-t-textDim" />
           </div>
           {result.trades.length > 0 && (
             <div className="mt-2 border-t border-t-border/60 pt-2">
@@ -592,7 +597,7 @@ function BacktestPanel({ results }: { results: StrategyBacktestResult[] }) {
                 {result.trades.slice(-3).reverse().map(trade => (
                   <div key={`${trade.entryDate}-${trade.exitDate}`} className="grid grid-cols-[1fr_auto] gap-2 text-[11px]">
                     <span className="text-t-textDim truncate">{trade.entryDate.slice(5)} 买 {formatPrice(trade.entry)} → {trade.exitDate.slice(5)} 卖 {formatPrice(trade.exit)}</span>
-                    <span className={`data-num ${trade.returnPct >= 0 ? 'text-t-red' : 'text-t-green'}`}>{formatPct(trade.returnPct)}</span>
+                    <span className={`data-num ${trade.returnPct >= 0 ? 'text-t-red' : 'text-t-green'}`}>{formatPct(trade.returnPct)} 净</span>
                   </div>
                 ))}
               </div>

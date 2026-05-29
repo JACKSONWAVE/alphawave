@@ -7,7 +7,9 @@ import {
   isTradingDay,
   type RealtimeQuote,
 } from './realtimeApi';
-import type { AlertRule } from './mockData';
+import { getKlineData, getStockInfo, type AlertRule } from './mockData';
+import { mergeRealtimeQuoteIntoKline } from './realtimeKline';
+import { buildTechnicalSignalReport, type TechnicalSignal } from './technicalSignals';
 
 export interface RealtimeSnapshot {
   quotes: RealtimeQuote[];
@@ -28,6 +30,7 @@ type Listener = (snapshot: RealtimeSnapshot) => void;
 const listeners = new Map<Listener, Set<string>>();
 const quoteCache = new Map<string, RealtimeQuote>();
 const firedAlertIds = new Set<string>();
+const firedTechnicalSignalIds = new Set<string>();
 let cachedQuoteList: RealtimeQuote[] = [];
 
 let loading = false;
@@ -90,6 +93,29 @@ function dispatchLocalEvent(name: string, detail?: unknown) {
   window.dispatchEvent(new CustomEvent(name, { detail }));
 }
 
+function getSignalHistoryKey() {
+  return 'alphawave_signal_alert_history';
+}
+
+function rememberTechnicalSignal(code: string, name: string, signal: TechnicalSignal) {
+  const next = {
+    id: `${code}-${signal.date}-${signal.type}-${signal.score}`,
+    code,
+    name,
+    type: signal.type,
+    title: signal.title,
+    score: signal.score,
+    price: signal.price,
+    date: signal.date,
+    reason: signal.reason,
+    action: signal.action,
+    firedAt: Date.now(),
+  };
+  const history = readJson<typeof next[]>(getSignalHistoryKey(), []);
+  localStorage.setItem(getSignalHistoryKey(), JSON.stringify([next, ...history.filter(item => item.id !== next.id)].slice(0, 80)));
+  return next;
+}
+
 async function sendFeishuAlert(rule: AlertRule, quote: RealtimeQuote) {
   const config = readJson<{ webhook?: string; watchList?: string[] } | null>('feishu_config', null);
   if (!config?.webhook) return;
@@ -125,6 +151,44 @@ async function sendFeishuAlert(rule: AlertRule, quote: RealtimeQuote) {
   }
 }
 
+async function sendFeishuTechnicalSignal(code: string, name: string, signal: TechnicalSignal, quote: RealtimeQuote) {
+  const config = readJson<{ webhook?: string; watchList?: string[] } | null>('feishu_config', null);
+  if (!config?.webhook) return;
+
+  const watched = !config.watchList?.length || config.watchList.includes(code);
+  if (!watched) return;
+
+  const template = signal.type === 'buy' ? 'red' : 'green';
+  const message = [
+    '## AlphaWave Technical Signal',
+    '',
+    `**${name} (${code})** ${signal.title}`,
+    '',
+    `Score: ${signal.score}`,
+    `Price: ${signal.price}`,
+    `Realtime: ${quote.price}`,
+    `Reason: ${signal.reason}`,
+    `Action: ${signal.action}`,
+    `Time: ${quote.time || new Date().toLocaleString('zh-CN')}`,
+  ].join('\n');
+
+  try {
+    await fetch(config.webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        msg_type: 'interactive',
+        card: {
+          header: { title: { tag: 'plain_text', content: 'AlphaWave Technical Signal' }, template },
+          elements: [{ tag: 'div', text: { tag: 'lark_md', content: message } }],
+        },
+      }),
+    });
+  } catch {
+    // Feishu failures should not break the market data loop.
+  }
+}
+
 function evaluateAlerts(quotes: RealtimeQuote[]) {
   const alerts = readJson<AlertRule[]>('alerts', []);
   if (alerts.length === 0) return;
@@ -151,6 +215,27 @@ function evaluateAlerts(quotes: RealtimeQuote[]) {
   });
 }
 
+function evaluateTechnicalSignals(quotes: RealtimeQuote[]) {
+  quotes.forEach(quote => {
+    const kline = mergeRealtimeQuoteIntoKline(getKlineData(quote.code), quote);
+    if (kline.length < 80) return;
+
+    const report = buildTechnicalSignalReport(kline);
+    const latestDate = kline[kline.length - 1]?.date;
+    const signal = [...report.signals].reverse().find(item => item.date === latestDate);
+    if (!signal || signal.score < 55) return;
+
+    const key = `${quote.code}-${signal.date}-${signal.type}-${signal.score}`;
+    if (firedTechnicalSignalIds.has(key)) return;
+
+    firedTechnicalSignalIds.add(key);
+    const info = getStockInfo(quote.code);
+    const record = rememberTechnicalSignal(quote.code, info.name, signal);
+    dispatchLocalEvent('alphawave:technical-signal-fired', { record, signal, quote });
+    void sendFeishuTechnicalSignal(quote.code, info.name, signal, quote);
+  });
+}
+
 async function refreshNow() {
   if (loading) return;
   loading = true;
@@ -165,6 +250,7 @@ async function refreshNow() {
     lastUpdate = Date.now();
     countdown = getSmartInterval();
     evaluateAlerts(data);
+    evaluateTechnicalSignals(data);
   } catch {
     error = 'fetch failed';
   } finally {

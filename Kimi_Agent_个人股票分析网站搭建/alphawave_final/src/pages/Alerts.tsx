@@ -5,11 +5,34 @@ import type { AlertRule } from '../data/mockData';
 import { formatPrice } from '../data/price';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 
+interface TechnicalSignalRecord {
+  id: string;
+  code: string;
+  name: string;
+  type: 'buy' | 'sell';
+  title: string;
+  score: number;
+  price: number;
+  date: string;
+  reason: string;
+  action: string;
+  firedAt: number;
+}
+
+function getTechnicalSignalHistory(): TechnicalSignalRecord[] {
+  try {
+    return JSON.parse(localStorage.getItem('alphawave_signal_alert_history') || '[]');
+  } catch {
+    return [];
+  }
+}
+
 export default function Alerts() {
   const [showAdd, setShowAdd] = useState(false);
   const [alerts, setAlerts] = useState<AlertRule[]>(getAlerts());
   const [form, setForm] = useState({ code: '', type: 'above' as 'above' | 'below', price: '' });
   const [lastFired, setLastFired] = useState('');
+  const [signalHistory, setSignalHistory] = useState<TechnicalSignalRecord[]>(getTechnicalSignalHistory());
   const stockList = getStockList();
   const codes = useMemo(() => Array.from(new Set(alerts.map(alert => alert.code))), [alerts]);
   const { quotes, loading, lastUpdate, refresh } = useRealtimeQuotes({ codes });
@@ -59,7 +82,12 @@ export default function Alerts() {
       if (detail?.rule) setLastFired(`${detail.rule.name} ${detail.rule.type === 'above' ? '突破' : '跌破'} ${formatPrice(detail.rule.price)}`);
     };
     window.addEventListener('alphawave:alert-fired', onFired);
-    return () => window.removeEventListener('alphawave:alert-fired', onFired);
+    const onSignalFired = () => setSignalHistory(getTechnicalSignalHistory());
+    window.addEventListener('alphawave:technical-signal-fired', onSignalFired);
+    return () => {
+      window.removeEventListener('alphawave:alert-fired', onFired);
+      window.removeEventListener('alphawave:technical-signal-fired', onSignalFired);
+    };
   }, []);
 
   return (
@@ -110,6 +138,36 @@ export default function Alerts() {
           <button onClick={() => setShowAdd(false)} className="px-3 py-1 rounded text-t-textDim text-xs">取消</button>
         </div>
       )}
+
+      <div className="panel p-3 border border-t-blue/25">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h3 className="text-sm font-semibold text-t-textBright">技术信号预警</h3>
+          <span className="text-xs text-t-textDim">{signalHistory.length} 条历史</span>
+        </div>
+        {signalHistory.length === 0 ? (
+          <div className="text-xs text-t-textDim py-3">暂无共振买卖点触发。实时总线会自动监控最新K线，触发后同步飞书。</div>
+        ) : (
+          <div className="space-y-2 max-h-56 overflow-y-auto scrollbar-thin">
+            {signalHistory.slice(0, 8).map(record => (
+              <div key={record.id} className="grid grid-cols-[1fr_auto] gap-3 border border-t-border/60 rounded p-2 bg-white/[0.02]">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-t-textBright">{record.name}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${record.type === 'buy' ? 'bg-t-red/15 text-t-red' : 'bg-t-green/15 text-t-green'}`}>{record.title}</span>
+                    <span className="text-[10px] text-t-textDim data-num">{record.date}</span>
+                  </div>
+                  <p className="text-[11px] text-t-textDim truncate mt-1">{record.reason}</p>
+                  <p className="text-[11px] text-t-textSecondary truncate">{record.action}</p>
+                </div>
+                <div className="text-right data-num">
+                  <div className={record.type === 'buy' ? 'text-t-red font-bold' : 'text-t-green font-bold'}>{record.score}</div>
+                  <div className="text-[10px] text-t-textDim">{formatPrice(record.price)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="panel">
         {alerts.length === 0 ? <div className="py-8 text-center text-t-textDim text-sm">暂无预警规则，点击上方添加</div> : (

@@ -162,6 +162,11 @@ export default function Dashboard() {
   const partialCount = auditItems.filter(item => item.status === 'partial').length;
   const tenYearCount = freshness.filter(item => item.isTenYear).length;
   const freshCount = freshness.filter(item => item.isFresh).length;
+  const healthyDataCount = freshness.filter(item => item.status === 'healthy').length;
+  const dataRiskList = freshness
+    .filter(item => item.status !== 'healthy')
+    .sort((a, b) => a.qualityScore - b.qualityScore)
+    .slice(0, 3);
 
   return (
     <div className="space-y-3">
@@ -192,10 +197,22 @@ export default function Dashboard() {
             </div>
             <div className="text-right text-xs data-num">
               <div className="text-t-blue font-bold">{tenYearCount}/{freshness.length} 十年样本</div>
-              <div className="text-t-textDim">{freshCount} 只更新到今日</div>
+              <div className="text-t-textDim">{freshCount} 只更新到今日 · {healthyDataCount} 健康</div>
             </div>
           </div>
           <div className="space-y-2">
+            {dataRiskList.map(item => (
+              <div key={item.code} className="grid grid-cols-[1fr_auto] gap-2 border border-t-yellow/25 rounded p-2 bg-t-yellow/5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-t-textBright">{item.name}</span>
+                    <span className="text-[10px] text-t-textDim">{item.lastDate}</span>
+                  </div>
+                  <div className="text-[11px] text-t-textDim truncate">{item.note}</div>
+                </div>
+                <div className={`text-right data-num font-bold ${item.status === 'bad' ? 'text-t-green' : 'text-t-yellow'}`}>{item.qualityScore}</div>
+              </div>
+            ))}
             {quantCandidates.slice(0, 3).map(candidate => (
               <div key={candidate.code} className="grid grid-cols-[1fr_auto] gap-2 border border-t-border rounded p-2 bg-white/[0.02]">
                 <div className="min-w-0">
