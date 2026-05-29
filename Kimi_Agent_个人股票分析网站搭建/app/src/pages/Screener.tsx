@@ -111,7 +111,7 @@ export default function Screener() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="搜索代码/名称/行业"
-            className="w-full bg-t-card border border-t-border rounded pl-7 pr-3 py-1.5 text-xs text-t-text outline-none focus:border-t-blue"
+            className="w-full bg-t-bg border border-t-border rounded pl-7 pr-3 py-1.5 text-xs text-t-text outline-none focus:border-t-blue"
           />
         </div>
         <span className="text-xs text-t-textDim">排序:</span>
