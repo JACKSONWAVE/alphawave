@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Send, Save, BookOpen, Plus, Bell, Play, Square, Cloud, Eye, EyeOff } from 'lucide-react';
 import { getStockList } from '../data/mockData';
 import { saveFeishuConfig, getFeishuConfig, generateMorningReport, sendToFeishu, startAutoPush, stopAutoPush, FEISHU_GUIDE } from '../components/FeishuBot';
@@ -14,7 +14,7 @@ function getLocalWatchCodes() {
 }
 
 export default function FeishuSettings() {
-  const stocks = getStockList();
+  const stocks = useMemo(() => getStockList(), []);
   const existing = getFeishuConfig();
   const localWatchCodes = getLocalWatchCodes();
 
@@ -26,6 +26,20 @@ export default function FeishuSettings() {
   const [preview, setPreview] = useState('');
   const [autoPush, setAutoPush] = useState(false);
   const [showWebhook, setShowWebhook] = useState(false);
+  const [stockQuery, setStockQuery] = useState('');
+  const watchSet = useMemo(() => new Set(watchList), [watchList]);
+  const visibleStocks = useMemo(() => {
+    const keyword = stockQuery.trim().toLowerCase();
+    const pool = keyword
+      ? stocks.filter(stock =>
+        stock.code.toLowerCase().includes(keyword) ||
+        stock.name.toLowerCase().includes(keyword) ||
+        stock.industry.toLowerCase().includes(keyword)
+      )
+      : stocks.filter(stock => watchSet.has(stock.code));
+    return pool.slice(0, 80);
+  }, [stockQuery, stocks, watchSet]);
+  const selectedStocks = useMemo(() => watchList.map(code => stocks.find(stock => stock.code === code)).filter(Boolean), [watchList, stocks]);
 
   const saveConfig = () => {
     const config: FeishuConfig = { webhook, watchList, pushTime, pushType: 'morning' };
@@ -134,9 +148,26 @@ export default function FeishuSettings() {
 
       {/* 关注股票 */}
       <div className="panel p-4">
-        <h2 className="text-sm font-semibold text-t-textBright mb-3">关注股票 ({watchList.length}只)</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-[300px] overflow-y-auto scrollbar-thin">
-          {stocks.map(s => {
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h2 className="text-sm font-semibold text-t-textBright">关注股票 ({watchList.length}只)</h2>
+          <input
+            value={stockQuery}
+            onChange={event => setStockQuery(event.target.value)}
+            placeholder="搜索代码/名称/行业"
+            className="bg-t-bg border border-t-border rounded px-3 py-1.5 text-sm text-t-text outline-none min-w-[240px] placeholder-t-textDim/60"
+          />
+        </div>
+        {selectedStocks.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {selectedStocks.map(stock => stock && (
+              <button key={stock.code} onClick={() => toggleWatch(stock.code)} className="px-2 py-1 rounded bg-t-blue/15 text-t-blue border border-t-blue/25 text-xs">
+                {stock.name} ×
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-h-[260px] overflow-y-auto scrollbar-thin">
+          {visibleStocks.map(s => {
             const watched = watchList.includes(s.code);
             return (
               <button key={s.code} onClick={() => toggleWatch(s.code)}
@@ -146,6 +177,9 @@ export default function FeishuSettings() {
               </button>
             );
           })}
+        </div>
+        <div className="text-[10px] text-t-textDim mt-2">
+          {stockQuery ? `显示前 ${visibleStocks.length} 个匹配结果` : '未搜索时只显示已关注股票，避免一次渲染全市场导致卡顿'}
         </div>
       </div>
 

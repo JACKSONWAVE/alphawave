@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Filter, Search, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { getStockList } from '../data/mockData';
 import { formatPct, formatPrice } from '../data/price';
 
 export default function Screener() {
-  const stockList = getStockList();
+  const stockList = useMemo(() => getStockList(), []);
 
+  const [query, setQuery] = useState('');
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [minChange, setMinChange] = useState('');
@@ -16,10 +17,18 @@ export default function Screener() {
   const [industry, setIndustry] = useState('全部');
   const [sortBy, setSortBy] = useState('changePct');
 
-  const industries = ['全部', ...Array.from(new Set(stockList.map(s => s.industry)))];
+  const industries = useMemo(() => ['全部', ...Array.from(new Set(stockList.map(s => s.industry)))], [stockList]);
 
   const filtered = useMemo(() => {
     let res = [...stockList];
+    const keyword = query.trim().toLowerCase();
+    if (keyword) {
+      res = res.filter(s =>
+        s.code.toLowerCase().includes(keyword) ||
+        s.name.toLowerCase().includes(keyword) ||
+        s.industry.toLowerCase().includes(keyword)
+      );
+    }
     if (minPrice) res = res.filter(s => s.price >= parseFloat(minPrice));
     if (maxPrice) res = res.filter(s => s.price <= parseFloat(maxPrice));
     if (minChange) res = res.filter(s => s.changePct >= parseFloat(minChange));
@@ -34,14 +43,16 @@ export default function Screener() {
       return bv - av;
     });
     return res;
-  }, [stockList, minPrice, maxPrice, minChange, maxChange, minPe, maxPe, industry, sortBy]);
+  }, [stockList, query, minPrice, maxPrice, minChange, maxChange, minPe, maxPe, industry, sortBy]);
+
+  const visible = useMemo(() => filtered.slice(0, 300), [filtered]);
 
   const quickFilters = [
     { label: '涨停潜力', fn: () => { setMinChange('5'); setMaxChange('9.9'); } },
     { label: '超跌反弹', fn: () => { setMinChange('-5'); setMaxChange('0'); } },
     { label: '低估值', fn: () => { setMinPe('0'); setMaxPe('20'); } },
     { label: '高估值', fn: () => { setMinPe('50'); setMaxPe('999'); } },
-    { label: '重置', fn: () => { setMinPrice(''); setMaxPrice(''); setMinChange(''); setMaxChange(''); setMinPe(''); setMaxPe(''); setIndustry('全部'); } },
+    { label: '重置', fn: () => { setQuery(''); setMinPrice(''); setMaxPrice(''); setMinChange(''); setMaxChange(''); setMinPe(''); setMaxPe(''); setIndustry('全部'); } },
   ];
 
   return (
@@ -93,12 +104,21 @@ export default function Screener() {
       </div>
 
       {/* 排序 */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[240px] flex-1 max-w-md">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-t-textDim" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="搜索代码/名称/行业"
+            className="w-full bg-t-card border border-t-border rounded pl-7 pr-3 py-1.5 text-xs text-t-text outline-none focus:border-t-blue"
+          />
+        </div>
         <span className="text-xs text-t-textDim">排序:</span>
         {[{ k: 'changePct', l: '涨跌幅' }, { k: 'price', l: '价格' }, { k: 'pe', l: 'PE' }].map(s => (
           <button key={s.k} onClick={() => setSortBy(s.k)} className={`px-2 py-0.5 rounded text-xs ${sortBy === s.k ? 'bg-t-blue text-white' : 'text-t-textDim border border-t-border'}`}>{s.l}</button>
         ))}
-        <span className="ml-auto text-xs text-t-textDim">共 {filtered.length} 只</span>
+        <span className="ml-auto text-xs text-t-textDim">显示 {visible.length}/{filtered.length} 只</span>
       </div>
 
       {/* 结果 */}
@@ -118,7 +138,7 @@ export default function Screener() {
               <th className="text-left py-2 font-medium">操作</th>
             </tr></thead>
             <tbody>
-              {filtered.map((s, i) => {
+              {visible.map((s, i) => {
                 const up = s.changePct >= 0;
                 const distHigh = s.high52w > 0 ? ((s.price - s.high52w) / s.high52w * 100) : 0;
                 return <tr key={s.code} className={`border-b border-t-border/50 ${i % 2 ? 'bg-white/[0.02]' : ''} hover:bg-white/[0.04]`}>
@@ -138,6 +158,11 @@ export default function Screener() {
           </table>
         </div>
         {filtered.length === 0 && <div className="py-8 text-center text-t-textDim text-sm">无匹配股票，请调整筛选条件</div>}
+        {filtered.length > visible.length && (
+          <div className="px-3 py-2 border-t border-t-border text-[11px] text-t-textDim">
+            已限制展示前 300 条，继续输入代码、名称或行业可快速缩小范围。
+          </div>
+        )}
       </div>
     </div>
   );

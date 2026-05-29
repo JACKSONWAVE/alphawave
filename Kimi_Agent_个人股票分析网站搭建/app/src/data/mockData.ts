@@ -45,12 +45,13 @@ function generateMockKline(days: number, basePrice: number): KlineData[] {
   const now = new Date();
   for (let i = days; i >= 0; i--) {
     const date = new Date(now); date.setDate(date.getDate() - i);
-    const c = (Math.random() - 0.48) * 0.025;
+    const wave = Math.sin((days - i) * 0.41) * 0.006 + Math.cos((days - i) * 0.17) * 0.004;
+    const c = wave - 0.0005;
     price = Math.max(basePrice * 0.5, price * (1 + c));
-    const o = price * (1 + (Math.random() - 0.5) * 0.01);
-    const hi = Math.max(o, price) * (1 + Math.random() * 0.008);
-    const lo = Math.min(o, price) * (1 - Math.random() * 0.008);
-    const v = Math.floor(Math.random() * 700000 + 200000);
+    const o = price * (1 + Math.sin(i * 0.23) * 0.003);
+    const hi = Math.max(o, price) * (1 + 0.006 + Math.abs(Math.sin(i * 0.13)) * 0.004);
+    const lo = Math.min(o, price) * (1 - 0.006 - Math.abs(Math.cos(i * 0.11)) * 0.004);
+    const v = Math.floor(350000 + Math.abs(Math.sin(i * 0.37)) * 550000);
     data.push({ date: date.toISOString().split('T')[0], open: +o.toFixed(2), high: +hi.toFixed(2), low: +lo.toFixed(2), close: +price.toFixed(2), volume: v, amount: +(v * price / 10000).toFixed(0) });
   }
   return data;

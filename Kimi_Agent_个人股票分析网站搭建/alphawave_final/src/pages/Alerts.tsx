@@ -4,6 +4,7 @@ import { getAlerts, getStockInfo, getStockList, saveAlerts } from '../data/mockD
 import type { AlertRule } from '../data/mockData';
 import { formatPrice } from '../data/price';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
+import StockPicker from '../components/StockPicker';
 
 interface TechnicalSignalRecord {
   id: string;
@@ -33,7 +34,7 @@ export default function Alerts() {
   const [form, setForm] = useState({ code: '', type: 'above' as 'above' | 'below', price: '' });
   const [lastFired, setLastFired] = useState('');
   const [signalHistory, setSignalHistory] = useState<TechnicalSignalRecord[]>(getTechnicalSignalHistory());
-  const stockList = getStockList();
+  const stockList = useMemo(() => getStockList(), []);
   const codes = useMemo(() => Array.from(new Set(alerts.map(alert => alert.code))), [alerts]);
   const { quotes, loading, lastUpdate, refresh } = useRealtimeQuotes({ codes });
 
@@ -125,10 +126,7 @@ export default function Alerts() {
 
       {showAdd && (
         <div className="panel p-3 flex flex-wrap items-end gap-2">
-          <select value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="bg-t-bg border border-t-border rounded px-2 py-1 text-sm text-t-text outline-none min-w-[160px]">
-            <option value="">选择股票</option>
-            {stockList.map(stock => <option key={stock.code} value={stock.code}>{stock.code} {stock.name}</option>)}
-          </select>
+          <StockPicker stocks={stockList} value={form.code} onChange={code => setForm({ ...form, code })} className="w-64" />
           <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value as 'above' | 'below' })} className="bg-t-bg border border-t-border rounded px-2 py-1 text-sm text-t-text outline-none">
             <option value="above">价格高于</option>
             <option value="below">价格低于</option>

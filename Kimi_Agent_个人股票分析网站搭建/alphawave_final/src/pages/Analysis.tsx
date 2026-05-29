@@ -15,6 +15,7 @@ import {
   getStockInfo,
   getStockList,
   getTrend,
+  type KlineData,
   type TradeRecord,
 } from '../data/mockData';
 import { analyzeDaily, calcIndicatorScore, calcSupportResistance } from '../data/analysisEngine';
@@ -23,6 +24,7 @@ import { buildIntradayStrategy, type IntradayStrategy } from '../data/intradaySt
 import { buildMarketContext, type MarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
 import { getAppSettings } from '../data/appSettings';
+import { fetchRemoteKline } from '../data/remoteKline';
 import { fetchIntradayMinutes } from '../data/realtimeApi';
 import { intradayToKline, mergeRealtimeQuoteIntoKline, type IntradayPoint } from '../data/realtimeKline';
 import { buildStrategyPlan, type StrategyPlan } from '../data/strategyEngine';
@@ -31,6 +33,7 @@ import { buildHoldingAdvice, buildTradeGuard, getHoldingPosition, type HoldingAd
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { ProKlineChart } from '../components/ProKlineChart';
+import StockPicker from '../components/StockPicker';
 
 type Indicator = 'ma' | 'macd' | 'rsi' | 'kdj' | 'boll' | 'cci' | 'wr';
 type Period = 'intraday' | 30 | 60 | 120 | 250 | 'all';
@@ -66,14 +69,18 @@ export default function Analysis() {
   const [showSignals, setShowSignals] = useState(() => localStorage.getItem('analysis_show_signals') !== '0');
   const [chartMode, setChartMode] = useState<'candle' | 'line'>('candle');
   const [intradayPoints, setIntradayPoints] = useState<IntradayPoint[]>([]);
+  const [remoteKline, setRemoteKline] = useState<KlineData[] | null>(null);
+  const [remoteKlineLoading, setRemoteKlineLoading] = useState(false);
   const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
 
-  const stockList = getStockList();
+  const stockList = useMemo(() => getStockList(), []);
+  const selectedStock = useMemo(() => stockList.find(stock => stock.code === code), [stockList, code]);
   const realtimeCodes = useMemo(() => [code], [code]);
   const { quotes: realtimeQuotes, refresh: refreshRealtime } = useRealtimeQuotes({ codes: realtimeCodes, enabled: true });
   const realtimeQuote = realtimeQuotes.find(quote => quote.code === code);
   const days = period === 'all' || period === 'intraday' ? undefined : period;
-  const fullRawKline = useMemo(() => getKlineData(code), [code]);
+  const localRawKline = useMemo(() => getKlineData(code), [code]);
+  const fullRawKline = useMemo(() => remoteKline?.length ? remoteKline : localRawKline, [localRawKline, remoteKline]);
   const rawKline = useMemo(() => days ? fullRawKline.slice(-days) : fullRawKline, [days, fullRawKline]);
   const fullKline = useMemo(() => mergeRealtimeQuoteIntoKline(fullRawKline, realtimeQuote), [fullRawKline, realtimeQuote]);
   const kline = useMemo(() => {
@@ -160,6 +167,27 @@ export default function Analysis() {
   }, [showSignals]);
 
   useEffect(() => {
+    let active = true;
+    setRemoteKline(null);
+    if (selectedStock?.hasKline) {
+      setRemoteKlineLoading(false);
+      return () => { active = false; };
+    }
+    setRemoteKlineLoading(true);
+    fetchRemoteKline(code)
+      .then(data => {
+        if (active && data.length > 0) setRemoteKline(data);
+      })
+      .catch(() => {
+        if (active) setRemoteKline(null);
+      })
+      .finally(() => {
+        if (active) setRemoteKlineLoading(false);
+      });
+    return () => { active = false; };
+  }, [code, selectedStock?.hasKline]);
+
+  useEffect(() => {
     if (period !== 'intraday') return;
     let active = true;
     fetchIntradayMinutes(code).then(points => {
@@ -175,9 +203,12 @@ export default function Analysis() {
   return (
     <div className="space-y-3">
       <div className="panel p-3 flex flex-wrap items-center gap-3">
-        <select value={code} onChange={event => setCode(event.target.value)} className="bg-t-bg border border-t-border rounded px-2 py-1 text-sm text-t-text outline-none max-w-[210px]">
-          {stockList.map(stock => <option key={stock.code} value={stock.code}>{stock.code} {stock.name}</option>)}
-        </select>
+        <StockPicker stocks={stockList} value={code} onChange={setCode} className="w-64 max-w-full" />
+        {!selectedStock?.hasKline && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${remoteKline?.length ? 'text-t-blue border-t-blue/30 bg-t-blue/10' : 'text-t-yellow border-t-yellow/30 bg-t-yellow/10'}`}>
+            {remoteKlineLoading ? '加载远程K线' : remoteKline?.length ? `远程K线 ${remoteKline.length}` : '临时估算K线'}
+          </span>
+        )}
         <div>
           <span className="text-base font-bold data-num text-t-textBright">{formatPrice(latest.close)}</span>
           <span className={`ml-2 text-xs font-medium data-num ${changePct >= 0 ? 'text-t-red' : 'text-t-green'}`}>{formatPct(changePct)}</span>

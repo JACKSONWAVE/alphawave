@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Percent } from 'lucide-react';
 import { getKlineData, getStockList } from '../data/mockData';
 import type { TradeRecord } from '../data/mockData';
@@ -9,9 +9,10 @@ import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
 import { buildHoldingAdvice } from '../data/tradeGuard';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import StockPicker from '../components/StockPicker';
 
 export default function Trades() {
-  const stockList = getStockList();
+  const stockList = useMemo(() => getStockList(), []);
   const [trades, setTrades] = useLocalStorage<TradeRecord[]>('trades', []);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ code: '', type: 'buy' as 'buy' | 'sell', price: '', shares: '', date: '', note: '' });
@@ -154,10 +155,7 @@ export default function Trades() {
         {showAdd && (
           <div className="p-3 border-b border-t-border bg-white/[0.02]">
             <div className="flex flex-wrap items-end gap-2">
-              <select value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="bg-t-bg border border-t-border rounded px-2 py-1 text-sm text-t-text outline-none">
-                <option value="">选择股票</option>
-                {stockList.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
-              </select>
+              <StockPicker stocks={stockList} value={form.code} onChange={code => setForm({ ...form, code })} className="w-64" />
               <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value as 'buy' | 'sell' })} className="bg-t-bg border border-t-border rounded px-2 py-1 text-sm text-t-text outline-none">
                 <option value="buy">买入</option>
                 <option value="sell">卖出</option>
