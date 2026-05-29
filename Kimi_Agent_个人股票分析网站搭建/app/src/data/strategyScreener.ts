@@ -166,8 +166,8 @@ function calcUniverseSignal(stock: StockListItem) {
 
 function riskLevelOf(stock: StockListItem, score: number, hasDeepData: boolean): DailyStrategyPick['riskLevel'] {
   const pos = rangePosition(stock);
-  if (!hasDeepData || stock.changePct >= 7.5 || pos >= 0.92 || score < 42) return 'high';
-  if (stock.changePct >= 4.5 || pos >= 0.82 || score < 58) return 'medium';
+  if (stock.changePct >= 7.5 || pos >= 0.92 || score < 32) return 'high';
+  if (!hasDeepData || stock.changePct >= 4.5 || pos >= 0.82 || score < 58) return 'medium';
   return 'low';
 }
 
