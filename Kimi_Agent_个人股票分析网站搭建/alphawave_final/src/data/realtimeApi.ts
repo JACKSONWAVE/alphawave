@@ -178,7 +178,25 @@ export function getSmartInterval(): number {
 export async function fetchRealtimeQuotes(codes?: string[]): Promise<RealtimeQuote[]> {
   const targetCodes = codes || ALL_CODES;
   const tcCodes = targetCodes.map(toTencentCode);
-  
+
+  if (typeof window !== 'undefined') {
+    try {
+      const api = `/api/quote?codes=${encodeURIComponent(targetCodes.join(','))}`;
+      const res = await fetch(api, { method: 'GET' });
+      if (res.ok) {
+        const json = await res.json();
+        const proxied = (json?.data || []) as RealtimeQuote[];
+        if (proxied.length > 0) {
+          proxied.forEach(q => cache.set(q.code, q));
+          lastUpdate = Date.now();
+          return proxied;
+        }
+      }
+    } catch {
+      // Fall back to direct Tencent fetch below.
+    }
+  }
+
   try {
     const url = `https://qt.gtimg.cn/q=${tcCodes.join(',')}`;
     const r = await fetch(url, {

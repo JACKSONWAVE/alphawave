@@ -25,6 +25,7 @@ import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
 import { buildHoldingAdvice, buildHoldingPositions, buildTradeGuard, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
 import { buildDailyStrategyPicks } from '../data/strategyScreener';
+import { buildMarketScanner, type IndustryHeat } from '../data/marketScanner';
 import { buildDataFreshness, buildRequirementAudit, type SystemAuditItem } from '../data/systemAudit';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
@@ -157,6 +158,7 @@ export default function Dashboard() {
     ? buildHoldingAdvice({ position: selectedPosition, currentPrice: selected.price, plan: selectedPlan, scoreOverall: selected.score, marketHeat })
     : null;
   const dailyPicks = useMemo(() => buildDailyStrategyPicks(10), [realtimeQuotes]);
+  const marketScanner = useMemo(() => buildMarketScanner(), []);
   const auditItems = useMemo(() => buildRequirementAudit(), []);
   const freshness = useMemo(() => buildDataFreshness(), []);
   const doneCount = auditItems.filter(item => item.status === 'done').length;
@@ -172,6 +174,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-3">
       <RealtimeStatus />
+
+      <MarketRadarPanel report={marketScanner} />
 
       <section className="panel overflow-hidden">
         <div className="px-4 py-3 border-b border-t-border bg-[#131722] flex flex-wrap items-center justify-between gap-3">
@@ -459,6 +463,56 @@ function CommandMetric({ icon: Icon, label, value, tone, detail }: { icon: typeo
       <div className={`mt-1 text-xl font-bold data-num ${tone}`}>{value}</div>
       <div className="text-[10px] text-t-textDim mt-0.5">{detail}</div>
     </div>
+  );
+}
+
+function MarketRadarPanel({ report }: { report: ReturnType<typeof buildMarketScanner> }) {
+  return (
+    <section className="panel overflow-hidden">
+      <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-t-border">
+        <CommandMetric icon={Radar} label="全市场热度" value={`${report.heat}%`} tone={report.heat >= 65 ? 'text-t-red' : report.heat <= 35 ? 'text-t-green' : 'text-t-yellow'} detail={`${report.rising}/${report.total} 上涨`} />
+        <CommandMetric icon={Activity} label="强弱对比" value={`${report.strongCount}/${report.weakCount}`} tone={report.strongCount >= report.weakCount ? 'text-t-red' : 'text-t-green'} detail="涨超5% / 跌超5%" />
+        <CommandMetric icon={Target} label="策略机会" value={`${report.strategyCounts.龙头突破 + report.strategyCounts.共振低吸 + report.strategyCounts.量价突破 + report.strategyCounts.趋势回踩}`} tone="text-t-blue" detail="非观察候选数量" />
+        <CommandMetric icon={ShieldCheck} label="高风险候选" value={`${report.highRiskCount}`} tone={report.highRiskCount > report.total * 0.5 ? 'text-t-yellow' : 'text-t-green'} detail="仓位需要压缩" />
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_0.9fr] gap-0">
+        <div className="p-3 border-r border-t-border">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h2 className="text-sm font-semibold text-t-textBright">行业热度雷达</h2>
+            <span className="text-[10px] text-t-textDim">按上涨占比、均涨幅、策略分排序</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {report.hotIndustries.slice(0, 4).map(item => <IndustryHeatRow key={item.industry} item={item} hot />)}
+          </div>
+        </div>
+        <div className="p-3">
+          <h2 className="text-sm font-semibold text-t-textBright mb-2">市场执行提示</h2>
+          <div className="space-y-2">
+            {report.notes.map(note => (
+              <p key={note} className="text-xs text-t-textSecondary leading-relaxed">{note}</p>
+            ))}
+          </div>
+          <div className="mt-3 space-y-2">
+            {report.riskIndustries.slice(0, 2).map(item => <IndustryHeatRow key={item.industry} item={item} />)}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function IndustryHeatRow({ item, hot = false }: { item: IndustryHeat; hot?: boolean }) {
+  return (
+    <Link to={`/screener`} className={`block rounded border p-2 ${hot ? 'border-t-red/25 bg-t-red/5' : 'border-t-border bg-white/[0.02]'} hover:bg-white/[0.04]`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-t-textBright truncate">{item.industry}</span>
+        <span className={`data-num text-xs font-bold ${item.heat >= 60 ? 'text-t-red' : item.heat <= 35 ? 'text-t-green' : 'text-t-yellow'}`}>{item.heat}%</span>
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+        <span className="text-t-textDim truncate">{item.topName}</span>
+        <span className={item.avgChange >= 0 ? 'text-t-red data-num' : 'text-t-green data-num'}>{formatPct(item.avgChange)}</span>
+      </div>
+    </Link>
   );
 }
 

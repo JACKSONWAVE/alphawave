@@ -11,6 +11,7 @@ import {
   type KlineData,
 } from './mockData';
 import { analyzeDaily, calcIndicatorScore, calcSupportResistance } from './analysisEngine';
+import { getAppSettings } from './appSettings';
 import { formatPrice } from './price';
 import type { RealtimeQuote } from './realtimeApi';
 
@@ -212,16 +213,21 @@ function inferBias(score: number, ma20: number, ma60: number, current: number, m
   return 'neutral';
 }
 
-function positionByRisk(action: StrategyAction, confidence: number, rr: number, riskLevel: string): string {
+function positionByRisk(action: StrategyAction, confidence: number, rr: number, riskLevel: string, maxPositionPct: number): string {
+  const cap = Math.max(1, Math.min(100, Math.round(maxPositionPct || 10)));
+  const probe = Math.max(1, Math.min(cap, Math.round(cap * 0.35)));
+  const normal = Math.max(1, Math.min(cap, Math.round(cap * 0.65)));
   if (action === 'exit') return '0%，先离场等重新站回关键均线';
-  if (action === 'reduce') return '20%~40%，反弹到压力区优先降风险';
-  if (riskLevel === 'high') return '10%~20%，高波动只做试探仓';
-  if (action === 'buy_zone' && confidence >= 65 && rr >= 1.8) return '30%~50%，分2~3笔进场';
-  if (action === 'wait_pullback' || action === 'watch_breakout') return '10%~30%，等触发条件再加';
-  return '20%~40%，以持仓观察为主';
+  if (action === 'reduce') return `降到 ${normal}% 以下，反弹到压力区优先降风险`;
+  if (riskLevel === 'high') return `试探仓不超过 ${probe}%，高波动只做验证`;
+  if (action === 'buy_zone' && confidence >= 65 && rr >= 1.8) return `计划仓位上限 ${cap}%，分2~3笔进场`;
+  if (action === 'wait_pullback' || action === 'watch_breakout') return `先用 ${probe}%~${normal}% 观察，触发后仍不超过 ${cap}%`;
+  return `持仓观察为主，单票不超过 ${cap}%`;
 }
 
 export function buildStrategyPlanFromData(code: string, name: string, rawData: KlineData[], quote?: RealtimeQuote): StrategyPlan {
+  const settings = getAppSettings();
+  const maxPositionPct = parseFloat(settings.riskAlert) || 10;
   const data = (rawData.length ? rawData : getKlineData(code, 250)).slice(-250);
   const current = quote?.price || data[data.length - 1].close;
   const latest = { ...data[data.length - 1], close: current };
@@ -331,7 +337,7 @@ export function buildStrategyPlanFromData(code: string, name: string, rawData: K
   ];
 
   const backtest = buildBacktest(workingData);
-  const positionSize = positionByRisk(action, confidence, rr, daily.riskLevel);
+  const positionSize = positionByRisk(action, confidence, rr, daily.riskLevel, maxPositionPct);
   const summary = `${actionText(action)}；盈亏比 ${pct(rr)}，置信度 ${confidence}%，仓位建议 ${positionSize}`;
 
   return {
