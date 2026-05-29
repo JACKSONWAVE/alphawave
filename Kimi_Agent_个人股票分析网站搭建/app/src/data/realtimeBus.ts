@@ -123,15 +123,15 @@ async function sendFeishuAlert(rule: AlertRule, quote: RealtimeQuote) {
   const watched = !config.watchList?.length || config.watchList.includes(rule.code);
   if (!watched) return;
 
-  const direction = rule.type === 'above' ? 'breaks above' : 'falls below';
+  const direction = rule.type === 'above' ? '突破上方预警价' : '跌破下方预警价';
   const message = [
-    '## AlphaWave Realtime Alert',
+    '## AlphaWave 实时价格预警',
     '',
     `**${rule.name} (${rule.code})** ${direction} ${rule.price}`,
     '',
-    `Current price: ${quote.price}`,
-    `Change: ${quote.changePct}%`,
-    `Time: ${quote.time || new Date().toLocaleString('zh-CN')}`,
+    `当前价：${quote.price}`,
+    `涨跌幅：${quote.changePct}%`,
+    `触发时间：${quote.time || new Date().toLocaleString('zh-CN')}`,
   ].join('\n');
 
   try {
@@ -141,7 +141,7 @@ async function sendFeishuAlert(rule: AlertRule, quote: RealtimeQuote) {
       body: JSON.stringify({
         msg_type: 'interactive',
         card: {
-          header: { title: { tag: 'plain_text', content: 'AlphaWave Realtime Alert' }, template: 'red' },
+          header: { title: { tag: 'plain_text', content: 'AlphaWave 实时价格预警' }, template: 'red' },
           elements: [{ tag: 'div', text: { tag: 'lark_md', content: message } }],
         },
       }),
@@ -160,16 +160,16 @@ async function sendFeishuTechnicalSignal(code: string, name: string, signal: Tec
 
   const template = signal.type === 'buy' ? 'red' : 'green';
   const message = [
-    '## AlphaWave Technical Signal',
+    '## AlphaWave 技术共振信号',
     '',
     `**${name} (${code})** ${signal.title}`,
     '',
-    `Score: ${signal.score}`,
-    `Price: ${signal.price}`,
-    `Realtime: ${quote.price}`,
-    `Reason: ${signal.reason}`,
-    `Action: ${signal.action}`,
-    `Time: ${quote.time || new Date().toLocaleString('zh-CN')}`,
+    `信号分：${signal.score}`,
+    `信号价：${signal.price}`,
+    `实时价：${quote.price}`,
+    `依据：${signal.reason}`,
+    `动作：${signal.action}`,
+    `触发时间：${quote.time || new Date().toLocaleString('zh-CN')}`,
   ].join('\n');
 
   try {
@@ -179,7 +179,7 @@ async function sendFeishuTechnicalSignal(code: string, name: string, signal: Tec
       body: JSON.stringify({
         msg_type: 'interactive',
         card: {
-          header: { title: { tag: 'plain_text', content: 'AlphaWave Technical Signal' }, template },
+          header: { title: { tag: 'plain_text', content: 'AlphaWave 技术共振信号' }, template },
           elements: [{ tag: 'div', text: { tag: 'lark_md', content: message } }],
         },
       }),

@@ -221,8 +221,8 @@ function positionByRisk(action: StrategyAction, confidence: number, rr: number, 
   return '20%~40%，以持仓观察为主';
 }
 
-export function buildStrategyPlan(code: string, name: string, quote?: RealtimeQuote): StrategyPlan {
-  const data = getKlineData(code, 250);
+export function buildStrategyPlanFromData(code: string, name: string, rawData: KlineData[], quote?: RealtimeQuote): StrategyPlan {
+  const data = (rawData.length ? rawData : getKlineData(code, 250)).slice(-250);
   const current = quote?.price || data[data.length - 1].close;
   const latest = { ...data[data.length - 1], close: current };
   const workingData = [...data.slice(0, -1), latest];
@@ -378,6 +378,10 @@ export function buildStrategyPlan(code: string, name: string, quote?: RealtimeQu
     backtest,
     summary,
   };
+}
+
+export function buildStrategyPlan(code: string, name: string, quote?: RealtimeQuote): StrategyPlan {
+  return buildStrategyPlanFromData(code, name, getKlineData(code, 250), quote);
 }
 
 export function formatStrategyMarkdown(plan: StrategyPlan): string {

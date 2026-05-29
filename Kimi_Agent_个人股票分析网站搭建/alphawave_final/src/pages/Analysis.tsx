@@ -11,12 +11,14 @@ import {
   calcMACD,
   calcRSI,
   calcWR,
+  getAlerts,
   getKlineData,
   getStockInfo,
   getStockList,
   getTrend,
   type KlineData,
   type TradeRecord,
+  saveAlerts,
 } from '../data/mockData';
 import { analyzeDaily, calcIndicatorScore, calcSupportResistance } from '../data/analysisEngine';
 import { buildBacktestSuite, type StrategyBacktestResult } from '../data/backtestLab';
@@ -27,7 +29,7 @@ import { getAppSettings } from '../data/appSettings';
 import { fetchRemoteKline } from '../data/remoteKline';
 import { fetchIntradayMinutes } from '../data/realtimeApi';
 import { intradayToKline, mergeRealtimeQuoteIntoKline, type IntradayPoint } from '../data/realtimeKline';
-import { buildStrategyPlan, type StrategyPlan } from '../data/strategyEngine';
+import { buildStrategyPlanFromData, type StrategyPlan } from '../data/strategyEngine';
 import { buildTechnicalSignalReport, type TechnicalSignal, type TechnicalSignalReport } from '../data/technicalSignals';
 import { buildHoldingAdvice, buildTradeGuard, getHoldingPosition, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
@@ -71,6 +73,7 @@ export default function Analysis() {
   const [intradayPoints, setIntradayPoints] = useState<IntradayPoint[]>([]);
   const [remoteKline, setRemoteKline] = useState<KlineData[] | null>(null);
   const [remoteKlineLoading, setRemoteKlineLoading] = useState(false);
+  const [planAlertMessage, setPlanAlertMessage] = useState('');
   const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
 
   const stockList = useMemo(() => getStockList(), []);
@@ -142,7 +145,7 @@ export default function Analysis() {
   const supportResistance = useMemo(() => calcSupportResistance(kline), [kline]);
   const score = useMemo(() => calcIndicatorScore(kline), [kline]);
   const daily = useMemo(() => analyzeDaily(kline), [kline]);
-  const plan = useMemo(() => buildStrategyPlan(code, stockInfo.name, realtimeQuote), [code, stockInfo.name, realtimeQuote]);
+  const plan = useMemo(() => buildStrategyPlanFromData(code, stockInfo.name, fullKline, realtimeQuote), [code, stockInfo.name, fullKline, realtimeQuote]);
   const backtests = useMemo(() => buildBacktestSuite(kline), [kline]);
   const marketContext = useMemo(() => buildMarketContext(code, kline), [code, kline]);
   const intradayStrategy = useMemo(() => buildIntradayStrategy(intradayPoints), [intradayPoints]);
@@ -165,6 +168,16 @@ export default function Analysis() {
   useEffect(() => {
     localStorage.setItem('analysis_show_signals', showSignals ? '1' : '0');
   }, [showSignals]);
+
+  useEffect(() => {
+    const applySettings = () => {
+      const next = getAppSettings();
+      setPeriod((Number(next.defaultPeriod) || 120) as Period);
+      setIndicators(next.defaultIndicators as Indicator[]);
+    };
+    window.addEventListener('alphawave:settings-changed', applySettings);
+    return () => window.removeEventListener('alphawave:settings-changed', applySettings);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -198,6 +211,22 @@ export default function Analysis() {
 
   const toggleIndicator = (indicator: Indicator) => {
     setIndicators(current => current.includes(indicator) ? current.filter(item => item !== indicator) : [...current, indicator]);
+  };
+
+  const createPlanAlerts = () => {
+    const current = getAlerts();
+    const prefix = `strategy-${code}-`;
+    const nextRules = plan.triggers.map(trigger => ({
+      id: `${prefix}${trigger.label}`,
+      code,
+      name: stockInfo.name,
+      type: trigger.direction === 'above' ? 'above' as const : 'below' as const,
+      price: trigger.price,
+      enabled: true,
+    }));
+    saveAlerts([...current.filter(rule => !rule.id.startsWith(prefix)), ...nextRules]);
+    setPlanAlertMessage(`已写入 ${nextRules.length} 条策略预警`);
+    window.setTimeout(() => setPlanAlertMessage(''), 2400);
   };
 
   return (
@@ -275,7 +304,7 @@ export default function Analysis() {
               </button>
             ))}
           </div>
-          {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} />}
+          {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} onCreatePlanAlerts={createPlanAlerts} planAlertMessage={planAlertMessage} />}
           {sideTab === 'signals' && <ProfessionalSignalsPanel signals={signals} />}
           {sideTab === 'backtest' && <BacktestPanel results={backtests} />}
           {sideTab === 'market' && <MarketPanel context={marketContext} />}
@@ -307,7 +336,7 @@ function IntradayPanel({ strategy }: { strategy: IntradayStrategy }) {
   );
 }
 
-function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline, tradeGuard, holdingAdvice, technicalReport }: {
+function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline, tradeGuard, holdingAdvice, technicalReport, onCreatePlanAlerts, planAlertMessage }: {
   plan: StrategyPlan;
   supportResistance: ReturnType<typeof calcSupportResistance>;
   score: ReturnType<typeof calcIndicatorScore>;
@@ -318,6 +347,8 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
   tradeGuard: TradeGuard;
   holdingAdvice: HoldingAdvice;
   technicalReport: TechnicalSignalReport;
+  onCreatePlanAlerts: () => void;
+  planAlertMessage: string;
 }) {
   const baseIndex = Math.max(0, kline.length - 60);
   const change60 = kline[baseIndex]?.close ? (latest.close - kline[baseIndex].close) / kline[baseIndex].close * 100 : 0;
@@ -423,7 +454,13 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
       </div>
 
       <div className="panel p-3">
-        <h3 className="text-sm font-semibold text-t-textBright mb-2">飞书触发价</h3>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <h3 className="text-sm font-semibold text-t-textBright">飞书触发价</h3>
+          <button onClick={onCreatePlanAlerts} className="px-2 py-0.5 rounded border border-t-blue/30 text-[10px] text-t-blue hover:bg-t-blue/10">
+            写入预警
+          </button>
+        </div>
+        {planAlertMessage && <div className="text-[11px] text-t-green mb-2">{planAlertMessage}</div>}
         <div className="space-y-1.5">
           {plan.triggers.map(trigger => (
             <div key={trigger.label} className="flex items-start justify-between gap-2 text-xs">

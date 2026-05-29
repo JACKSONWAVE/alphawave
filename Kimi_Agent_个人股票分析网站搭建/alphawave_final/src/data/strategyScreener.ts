@@ -28,6 +28,8 @@ export interface DailyStrategyPick {
   evidence: string[];
   reason: string;
   hasDeepData: boolean;
+  riskLevel: 'low' | 'medium' | 'high';
+  execution: string;
 }
 
 function last<T>(items: T[]): T | undefined {
@@ -162,37 +164,57 @@ function calcUniverseSignal(stock: StockListItem) {
   };
 }
 
+function riskLevelOf(stock: StockListItem, score: number, hasDeepData: boolean): DailyStrategyPick['riskLevel'] {
+  const pos = rangePosition(stock);
+  if (!hasDeepData || stock.changePct >= 7.5 || pos >= 0.92 || score < 42) return 'high';
+  if (stock.changePct >= 4.5 || pos >= 0.82 || score < 58) return 'medium';
+  return 'low';
+}
+
+function executionText(strategy: StrategyTag, riskLevel: DailyStrategyPick['riskLevel']) {
+  if (strategy === '龙头突破') return riskLevel === 'high' ? '只等放量回封/回踩确认' : '突破后分批跟随，失败立即撤';
+  if (strategy === '共振低吸') return '只在计划买区低吸，不追高';
+  if (strategy === '量价突破') return '看量能延续，缩量回落先观察';
+  if (strategy === '趋势回踩') return '贴近20日线分批，跌破趋势线止损';
+  return '等待更清晰的共振信号';
+}
+
+export function scoreStrategyStock(stock: StockListItem): DailyStrategyPick {
+  const kline = stock.hasKline ? getKlineData(stock.code) : [];
+  const deep = stock.hasKline ? calcDeepSignal(stock, kline) : null;
+  const fallback = calcUniverseSignal(stock);
+  const signal = deep && deep.score >= 28 ? deep : fallback;
+  const score = Math.round(signal.score + (stock.hasKline ? 10 : 0));
+  const confidence = Math.max(35, Math.min(92, score + (stock.hasKline ? 18 : 8)));
+  const evidence = signal.evidence.slice(0, 4);
+  const riskLevel = riskLevelOf(stock, score, stock.hasKline);
+
+  return {
+    code: stock.code,
+    name: stock.name,
+    industry: stock.industry,
+    price: stock.price,
+    changePct: stock.changePct,
+    score,
+    confidence,
+    strategy: signal.strategy,
+    entry: signal.entry,
+    stop: signal.stop,
+    target: signal.target,
+    evidence,
+    hasDeepData: stock.hasKline,
+    riskLevel,
+    execution: executionText(signal.strategy, riskLevel),
+    reason: evidence.length
+      ? evidence.join('；')
+      : `涨跌幅 ${formatPct(stock.changePct)}，等待更多量价确认`,
+  };
+}
+
 export function buildDailyStrategyPicks(limit = 10): DailyStrategyPick[] {
   return getStockList()
     .filter(stock => stock.price > 0 && stock.changePct > -6 && stock.changePct < 9.8)
-    .map(stock => {
-      const kline = stock.hasKline ? getKlineData(stock.code) : [];
-      const deep = stock.hasKline ? calcDeepSignal(stock, kline) : null;
-      const fallback = calcUniverseSignal(stock);
-      const signal = deep && deep.score >= 28 ? deep : fallback;
-      const score = Math.round(signal.score + (stock.hasKline ? 10 : 0));
-      const confidence = Math.max(35, Math.min(92, score + (stock.hasKline ? 18 : 8)));
-      const evidence = signal.evidence.slice(0, 4);
-
-      return {
-        code: stock.code,
-        name: stock.name,
-        industry: stock.industry,
-        price: stock.price,
-        changePct: stock.changePct,
-        score,
-        confidence,
-        strategy: signal.strategy,
-        entry: signal.entry,
-        stop: signal.stop,
-        target: signal.target,
-        evidence,
-        hasDeepData: stock.hasKline,
-        reason: evidence.length
-          ? evidence.join('；')
-          : `涨跌幅 ${formatPct(stock.changePct)}，等待更多量价确认`,
-      };
-    })
+    .map(scoreStrategyStock)
     .filter(item => item.strategy !== '观察' && item.score >= 32)
     .sort((a, b) => b.score - a.score || b.confidence - a.confidence)
     .slice(0, limit);

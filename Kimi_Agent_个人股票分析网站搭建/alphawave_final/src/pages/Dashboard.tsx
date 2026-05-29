@@ -203,9 +203,13 @@ export default function Dashboard() {
               <div className="mt-2 space-y-1 text-[11px] text-t-textDim">
                 <div className="truncate">买区 {pick.entry}</div>
                 <div className="truncate">止损 {pick.stop} · 目标 {pick.target}</div>
+                <div className="truncate text-t-textSecondary">{pick.execution}</div>
                 <div className="truncate text-t-textSecondary">{pick.reason}</div>
               </div>
-              <div className="mt-2 text-[10px] text-t-textDim">{pick.hasDeepData ? '10 年 K 线共振' : '全市场快筛，待补深度 K 线'}</div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-t-textDim">
+                <span>{pick.hasDeepData ? '10 年 K 线共振' : '全市场快筛，待补深度 K 线'}</span>
+                <span className={pick.riskLevel === 'high' ? 'text-t-yellow' : pick.riskLevel === 'medium' ? 'text-t-blue' : 'text-t-green'}>风险 {pick.riskLevel}</span>
+              </div>
             </Link>
           ))}
         </div>

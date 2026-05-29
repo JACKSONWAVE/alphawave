@@ -84,10 +84,13 @@ export default function Alerts() {
     };
     window.addEventListener('alphawave:alert-fired', onFired);
     const onSignalFired = () => setSignalHistory(getTechnicalSignalHistory());
+    const onAlertsChanged = () => setAlerts(getAlerts());
     window.addEventListener('alphawave:technical-signal-fired', onSignalFired);
+    window.addEventListener('alphawave:alerts-changed', onAlertsChanged);
     return () => {
       window.removeEventListener('alphawave:alert-fired', onFired);
       window.removeEventListener('alphawave:technical-signal-fired', onSignalFired);
+      window.removeEventListener('alphawave:alerts-changed', onAlertsChanged);
     };
   }, []);
 
