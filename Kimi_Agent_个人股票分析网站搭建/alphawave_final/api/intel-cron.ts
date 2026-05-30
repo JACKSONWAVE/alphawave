@@ -1,6 +1,3 @@
-import { generateIntelReport } from '../src/data/intelReports';
-import { sendToFeishu } from '../src/data/feishuReports';
-
 function parseList(value: string | undefined): string[] {
   return (value || '')
     .split(',')
@@ -31,6 +28,7 @@ export default async function handler(request: any, response: any) {
     const webhook = process.env.FEISHU_WEBHOOK;
     const watchList = parseWatchList(request);
     const feedUrls = parseList(request.query?.feeds || process.env.NEWS_FEED_URLS);
+    const { generateIntelReport } = await import('../src/data/intelReports');
     const message = await generateIntelReport(watchList, feedUrls);
 
     if (!message) {
@@ -45,6 +43,7 @@ export default async function handler(request: any, response: any) {
       return response.status(500).json({ ok: false, error: 'missing FEISHU_WEBHOOK' });
     }
 
+    const { sendToFeishu } = await import('../src/data/feishuReports');
     const sent = await sendToFeishu(webhook, message);
     return response.status(sent ? 200 : 502).json({ ok: sent, sent, watchList });
   } catch (error) {
