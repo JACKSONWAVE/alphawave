@@ -8,6 +8,12 @@ function parseList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function parseWatchList(request: any): string[] {
+  const fromQuery = parseList(request.query?.codes);
+  if (fromQuery.length > 0) return fromQuery;
+  return parseList(process.env.FEISHU_WATCHLIST || '603019.SH');
+}
+
 function isAuthorized(request: any): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return true;
@@ -26,8 +32,8 @@ export default async function handler(request: any, response: any) {
     return response.status(500).json({ ok: false, error: 'missing FEISHU_WEBHOOK' });
   }
 
-  const watchList = parseList(process.env.FEISHU_WATCHLIST || '603019.SH');
-  const feedUrls = parseList(process.env.NEWS_FEED_URLS);
+  const watchList = parseWatchList(request);
+  const feedUrls = parseList(request.query?.feeds || process.env.NEWS_FEED_URLS);
   const message = await generateIntelReport(watchList, feedUrls);
 
   if (!message) {

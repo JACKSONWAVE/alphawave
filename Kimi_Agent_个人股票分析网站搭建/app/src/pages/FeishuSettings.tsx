@@ -117,7 +117,7 @@ export default function FeishuSettings() {
         <p className="text-xs text-t-textSecondary leading-relaxed">
           已新增 Vercel 定时接口 <span className="data-num text-t-blue">/api/feishu-cron?type=morning</span>。
           部署后只要在 Vercel 环境变量里配置 FEISHU_WEBHOOK、FEISHU_WATCHLIST、CRON_SECRET，
-          早盘策略会由云端自动发送，不需要保持网页打开。
+          早盘策略会由云端自动发送；<span className="data-num text-t-yellow">/api/intel-cron</span> 会多次扫描重大国内/国际资讯并映射到自选股。
         </p>
       </div>
 
@@ -193,6 +193,14 @@ export default function FeishuSettings() {
               <span className="text-t-text font-medium">盘前策略报告</span>
               <span className="text-t-textDim ml-2">{pushTime} 推送</span>
               <p className="text-t-textDim mt-0.5">今日动作、买区、突破线、止损、目标、盈亏比、仓位建议和走势剧本</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="w-6 h-6 rounded bg-t-red/15 text-t-red flex items-center justify-center flex-shrink-0 text-[10px]">讯</span>
+            <div>
+              <span className="text-t-text font-medium">重大资讯雷达</span>
+              <span className="text-t-textDim ml-2">交易日多次扫描</span>
+              <p className="text-t-textDim mt-0.5">国内/国际宏观、政策、产业、个股新闻，判断利好利空并重点映射自选股</p>
             </div>
           </div>
           <div className="flex items-start gap-2">

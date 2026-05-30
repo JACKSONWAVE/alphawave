@@ -72,9 +72,11 @@ export const FEISHU_GUIDE = `
 1. 在 Vercel Project Settings -> Environment Variables 添加：
    - FEISHU_WEBHOOK：你的飞书机器人 Webhook
    - FEISHU_WATCHLIST：关注股票代码，逗号分隔，例如 603019.SH,002594.SZ,600519.SH
+   - NEWS_FEED_URLS：可选，自定义资讯源 RSS/JSON 地址；不填时使用内置国内/国际财经搜索源
    - CRON_SECRET：随机字符串，用于保护定时接口
 2. 部署后，Vercel Cron 会每天盘前调用 /api/feishu-cron?type=morning。
-3. 盘中提醒和收盘复盘接口也已准备好，可在升级 Vercel 计划后增加更高频 Cron。
+3. /api/intel-cron 会在交易日前后多次扫描重大资讯，并按自选股映射利好/利空影响。
+4. 盘中提醒和收盘复盘接口也已准备好，可在升级 Vercel 计划后增加更高频 Cron。
 
 ### 本页手动/临时方式
 - 输入 Webhook 后可以立即推送测试。
@@ -82,6 +84,7 @@ export const FEISHU_GUIDE = `
 
 ### 推送内容
 - 早盘策略：今日动作、方向、置信度、买区、止损、目标、仓位建议。
+- 重大资讯雷达：国内/国际宏观、政策、产业和个股新闻，自动判断利好/利空并映射自选股。
 - 盘中提醒：突破压力、回踩买区、跌破止损、接近止盈时提醒。
 - 收盘复盘：次日重点、触发价、回测胜率。
 `;
