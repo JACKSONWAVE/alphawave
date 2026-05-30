@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
 import Watchlist from './pages/Watchlist';
+import Portfolio from './pages/Portfolio';
 import Screener from './pages/Screener';
 import Trades from './pages/Trades';
 import Alerts from './pages/Alerts';
@@ -17,6 +18,7 @@ function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/analysis" element={<Analysis />} />
         <Route path="/watchlist" element={<Watchlist />} />
+        <Route path="/portfolio" element={<Portfolio />} />
         <Route path="/screener" element={<Screener />} />
         <Route path="/trades" element={<Trades />} />
         <Route path="/alerts" element={<Alerts />} />

@@ -74,7 +74,8 @@ export function getCoreCodes(): string[] { return Object.keys(localStocks); }
 export function getStockName(code: string): string { return getStockRecord(code)?.name || code; }
 
 export function getMarketIndex() {
-  return Object.entries(stockData.indexes).map(([code, d]) => ({ code, name: d.name, price: d.price, change: d.change, changePct: d.changePct }));
+  return Object.entries(stockData.indexes as Record<string, { name: string; price: number; change: number; changePct: number }>)
+    .map(([code, d]) => ({ code, name: d.name, price: d.price, change: d.change, changePct: d.changePct }));
 }
 
 // ── 股票列表 ──

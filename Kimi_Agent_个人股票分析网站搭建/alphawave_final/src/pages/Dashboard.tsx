@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   BellRing,
   Bot,
+  BriefcaseBusiness,
   CheckCircle2,
   Crosshair,
   Database,
@@ -27,6 +28,7 @@ import { buildHoldingAdvice, buildHoldingPositions, buildTradeGuard, type Holdin
 import { buildDailyStrategyPicks, buildETFStrategyPicks, type DailyStrategyPick } from '../data/strategyScreener';
 import { buildMarketScanner, type IndustryHeat } from '../data/marketScanner';
 import { buildDataFreshness, buildRequirementAudit, type SystemAuditItem } from '../data/systemAudit';
+import { buildPortfolioWorkbench } from '../data/portfolioEngine';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import RealtimeStatus from '../components/RealtimeStatus';
@@ -87,8 +89,10 @@ function buildDeskStocks(staticStocks: ReturnType<typeof getCoreStockList>, real
     const price = realtime?.price ?? stock.price;
     const change = realtime?.change ?? stock.change;
     const changePct = realtime?.changePct ?? stock.changePct;
-    const ma20 = calcMA(kline, 20).at(-1);
-    const ma60 = calcMA(kline, 60).at(-1);
+    const ma20List = calcMA(kline, 20);
+    const ma60List = calcMA(kline, 60);
+    const ma20 = ma20List[ma20List.length - 1];
+    const ma60 = ma60List[ma60List.length - 1];
     const trend = getTrend(kline);
     const score = calcIndicatorScore(kline);
     const sr = calcSupportResistance(kline);
@@ -134,6 +138,7 @@ export default function Dashboard() {
 
   const deskStocks = useMemo(() => buildDeskStocks(staticStocks, realtimeQuotes), [staticStocks, realtimeQuotes]);
   const holdings = useMemo(() => buildHoldingPositions(trades), [trades]);
+  const portfolioWorkbench = useMemo(() => buildPortfolioWorkbench(trades), [trades]);
   const selected = deskStocks.find(stock => stock.code === selectedCode) || deskStocks[0];
   const visibleStocks = useMemo(() => (
     activeLane === '全部' ? deskStocks : deskStocks.filter(stock => stock.lane === activeLane)
@@ -177,6 +182,8 @@ export default function Dashboard() {
       <RealtimeStatus />
 
       <MarketRadarPanel report={marketScanner} />
+
+      <PortfolioCommandPanel workbench={portfolioWorkbench} />
 
       <section className="panel overflow-hidden">
         <div className="px-4 py-3 border-b border-t-border bg-[#131722] flex flex-wrap items-center justify-between gap-3">
@@ -542,6 +549,71 @@ function MarketRadarPanel({ report }: { report: ReturnType<typeof buildMarketSca
         </div>
       </div>
     </section>
+  );
+}
+
+function PortfolioCommandPanel({ workbench }: { workbench: ReturnType<typeof buildPortfolioWorkbench> }) {
+  const attack = workbench.layers.find(layer => layer.layer === '进攻');
+  const defense = workbench.layers.find(layer => layer.layer === '防守');
+  const etf = workbench.layers.find(layer => layer.layer === 'ETF');
+  const watch = workbench.layers.find(layer => layer.layer === '观察');
+  const stanceTone = workbench.stance === '进攻' ? 'text-t-red' : workbench.stance === '防守' ? 'text-t-green' : 'text-t-yellow';
+
+  return (
+    <section className="panel overflow-hidden">
+      <div className="px-4 py-3 border-b border-t-border bg-[#131722] flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2">
+            <BriefcaseBusiness className="w-4 h-4 text-t-blue" /> 组合级仓位管理
+          </h2>
+          <p className="text-[11px] text-t-textDim mt-1">把每日候选池拆成进攻、防守、ETF、观察四层，再用市场温度决定股票/ETF/现金目标仓。</p>
+        </div>
+        <Link to="/portfolio" className="inline-flex items-center gap-1 text-xs text-t-blue hover:underline">
+          进入组合中枢 <ArrowUpRight className="w-3 h-3" />
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-t-border">
+        <CommandMetric icon={Gauge} label="组合姿态" value={workbench.stance} tone={stanceTone} detail={`市场温度 ${workbench.marketHeat}%`} />
+        <CommandMetric icon={Target} label="目标个股" value={`${workbench.targetStockPct}%`} tone="text-t-red" detail={`进攻${attack?.picks.length || 0} / 防守${defense?.picks.length || 0}`} />
+        <CommandMetric icon={ShieldCheck} label="目标ETF" value={`${workbench.targetEtfPct}%`} tone="text-t-blue" detail={`${etf?.picks.length || 0}只ETF候选`} />
+        <CommandMetric icon={Database} label="可信度" value={`${workbench.credibility.score}`} tone={workbench.credibility.level === '高' ? 'text-t-red' : workbench.credibility.level === '中' ? 'text-t-blue' : 'text-t-yellow'} detail={`${workbench.credibility.level}可信 · 观察${watch?.picks.length || 0}`} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-0">
+        <div className="p-3 border-r border-t-border">
+          <h3 className="text-xs font-semibold text-t-textBright mb-2">仓位红绿灯</h3>
+          <div className="space-y-2">
+            <PortfolioBar label="个股" target={workbench.targetStockPct} current={workbench.currentStockPct} tone="bg-t-red" />
+            <PortfolioBar label="ETF" target={workbench.targetEtfPct} current={workbench.currentEtfPct} tone="bg-t-blue" />
+            <PortfolioBar label="现金" target={workbench.targetCashPct} current={workbench.currentCashPct} tone="bg-t-yellow" />
+          </div>
+        </div>
+        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+          {workbench.layers.map(layer => (
+            <Link key={layer.layer} to="/portfolio" className="rounded border border-t-border bg-white/[0.02] p-2 hover:bg-white/[0.04]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-t-textBright">{layer.title}</span>
+                <span className="data-num text-xs text-t-blue">{layer.budgetPct}%</span>
+              </div>
+              <div className="mt-1 text-[11px] text-t-textDim truncate">{layer.picks[0]?.name || '等待候选'} · {layer.riskRule}</div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PortfolioBar({ label, target, current, tone }: { label: string; target: number; current: number; tone: string }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px] mb-1">
+        <span className="text-t-textDim">{label}</span>
+        <span className="data-num text-t-textBright">当前 {current.toFixed(1)}% / 目标 {target}%</span>
+      </div>
+      <div className="h-1.5 rounded bg-white/[0.06] overflow-hidden">
+        <div className={`h-full rounded ${tone}`} style={{ width: `${Math.min(100, target)}%` }} />
+      </div>
+    </div>
   );
 }
 

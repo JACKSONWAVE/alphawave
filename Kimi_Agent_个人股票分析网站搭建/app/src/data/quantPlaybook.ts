@@ -42,7 +42,7 @@ export function buildQuantCandidates(): QuantCandidate[] {
       (best?.winRate || 0) * 0.35 +
       (best?.avgReturn || 0) * 4 -
       Math.abs(best?.maxDrawdown || 0) * 0.7 +
-      (guard.status === 'allow' ? 18 : guard.status === 'watch' ? 4 : -18)
+      (guard.status === 'allow' ? 18 : guard.status === 'wait' ? 4 : -18)
     );
 
     return {
