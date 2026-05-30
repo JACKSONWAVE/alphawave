@@ -120,7 +120,7 @@ export default function Alerts() {
           {triggered.map(alert => (
             <div key={alert.id} className="flex items-center justify-between gap-3 text-xs py-1">
               <span className="text-t-text">{alert.name} ({alert.code})</span>
-              <span className="text-t-red font-medium">{alert.type === 'above' ? '突破' : '跌破'} {formatPrice(alert.price)}</span>
+              <span className="text-t-red font-medium">{alert.mode === 'composite' ? '复合确认 ' : ''}{alert.type === 'above' ? '突破' : '跌破'} {formatPrice(alert.price)}</span>
               <span className="text-t-textBright data-num">当前: {formatPrice(priceOf(alert.code))}</span>
             </div>
           ))}
@@ -175,6 +175,7 @@ export default function Alerts() {
           <table className="w-full text-xs">
             <thead><tr className="text-t-textDim border-b border-t-border">
               <th className="text-left px-3 py-2 font-medium">股票</th>
+              <th className="text-left py-2 font-medium">类型</th>
               <th className="text-left py-2 font-medium">条件</th>
               <th className="text-right py-2 font-medium">目标价</th>
               <th className="text-right py-2 font-medium">实时价</th>
@@ -189,6 +190,12 @@ export default function Alerts() {
                   <td className="px-3 py-2">
                     <div className="text-t-text font-medium">{alert.name}</div>
                     <div className="text-[10px] text-t-textDim data-num">{alert.code}</div>
+                  </td>
+                  <td className="py-2">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${alert.mode === 'composite' ? 'bg-t-yellow/15 text-t-yellow' : 'bg-t-blue/15 text-t-blue'}`}>
+                      {alert.mode === 'composite' ? '复合策略' : '价格'}
+                    </span>
+                    {alert.note && <div className="text-[10px] text-t-textDim truncate max-w-[220px] mt-1">{alert.note}</div>}
                   </td>
                   <td className="py-2 text-t-textDim">{alert.type === 'above' ? '高于' : '低于'}</td>
                   <td className="py-2 text-right data-num text-t-text">{formatPrice(alert.price)}</td>

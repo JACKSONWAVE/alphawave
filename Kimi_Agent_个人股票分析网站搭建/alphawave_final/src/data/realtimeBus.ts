@@ -9,6 +9,7 @@ import {
 } from './realtimeApi';
 import { getKlineData, getStockInfo, type AlertRule } from './mockData';
 import { mergeRealtimeQuoteIntoKline } from './realtimeKline';
+import { buildMultiTimeframeReport } from './multiTimeframe';
 import { buildTechnicalSignalReport, type TechnicalSignal } from './technicalSignals';
 
 export interface RealtimeSnapshot {
@@ -123,16 +124,18 @@ async function sendFeishuAlert(rule: AlertRule, quote: RealtimeQuote) {
   const watched = !config.watchList?.length || config.watchList.includes(rule.code);
   if (!watched) return;
 
+  const isComposite = rule.mode === 'composite';
   const direction = rule.type === 'above' ? '突破上方预警价' : '跌破下方预警价';
   const message = [
-    '## AlphaWave 实时价格预警',
+    `## AlphaWave ${isComposite ? '复合策略预警' : '实时价格预警'}`,
     '',
     `**${rule.name} (${rule.code})** ${direction} ${rule.price}`,
     '',
     `当前价：${quote.price}`,
     `涨跌幅：${quote.changePct}%`,
+    rule.note ? `策略依据：${rule.note}` : '',
     `触发时间：${quote.time || new Date().toLocaleString('zh-CN')}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   try {
     await fetch(config.webhook, {
@@ -141,7 +144,7 @@ async function sendFeishuAlert(rule: AlertRule, quote: RealtimeQuote) {
       body: JSON.stringify({
         msg_type: 'interactive',
         card: {
-          header: { title: { tag: 'plain_text', content: 'AlphaWave 实时价格预警' }, template: 'red' },
+          header: { title: { tag: 'plain_text', content: isComposite ? 'AlphaWave 复合策略预警' : 'AlphaWave 实时价格预警' }, template: isComposite ? 'orange' : 'red' },
           elements: [{ tag: 'div', text: { tag: 'lark_md', content: message } }],
         },
       }),
@@ -149,6 +152,25 @@ async function sendFeishuAlert(rule: AlertRule, quote: RealtimeQuote) {
   } catch {
     // Feishu failures should not break the market data loop.
   }
+}
+
+function compositeAlertConfirmed(rule: AlertRule, quote: RealtimeQuote) {
+  if (rule.mode !== 'composite') return true;
+  const kline = mergeRealtimeQuoteIntoKline(getKlineData(rule.code), quote);
+  if (kline.length < 80) return false;
+
+  const technical = buildTechnicalSignalReport(kline);
+  const multiTimeframe = buildMultiTimeframeReport(kline);
+
+  if (rule.type === 'above') {
+    return technical.bias !== 'bearish'
+      && multiTimeframe.bias !== 'bearish'
+      && technical.score + multiTimeframe.score >= 20;
+  }
+
+  return technical.bias === 'bearish'
+    || multiTimeframe.bias === 'bearish'
+    || technical.score + multiTimeframe.score <= -20;
 }
 
 async function sendFeishuTechnicalSignal(code: string, name: string, signal: TechnicalSignal, quote: RealtimeQuote) {
@@ -203,7 +225,7 @@ function evaluateAlerts(quotes: RealtimeQuote[]) {
     if (!quote) return;
 
     const triggered = rule.type === 'above' ? quote.price >= rule.price : quote.price <= rule.price;
-    if (!triggered) {
+    if (!triggered || !compositeAlertConfirmed(rule, quote)) {
       firedAlertIds.delete(rule.id);
       return;
     }

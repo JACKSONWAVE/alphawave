@@ -32,6 +32,7 @@ import { intradayToKline, mergeRealtimeQuoteIntoKline, type IntradayPoint } from
 import { buildStrategyPlanFromData, type StrategyPlan } from '../data/strategyEngine';
 import { buildTechnicalSignalReport, type TechnicalSignal, type TechnicalSignalReport } from '../data/technicalSignals';
 import { buildHoldingAdvice, buildTradeGuard, getHoldingPosition, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
+import { buildMultiTimeframeReport, type MultiTimeframeReport } from '../data/multiTimeframe';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { ProKlineChart } from '../components/ProKlineChart';
@@ -107,6 +108,7 @@ export default function Analysis() {
   }, [kline]);
 
   const technicalReport = useMemo(() => buildTechnicalSignalReport(fullKline), [fullKline]);
+  const multiTimeframeReport = useMemo(() => buildMultiTimeframeReport(fullKline), [fullKline]);
   const signals = technicalReport.signals;
   const chartData = useMemo(() => {
     const signalMap = new Map(signals.map(signal => [signal.date, signal]));
@@ -156,7 +158,9 @@ export default function Analysis() {
     scoreOverall: score.overall,
     marketHeat: marketContext.heat,
     bestBacktestWinRate: backtests[0]?.winRate,
-  }), [latest.close, plan, score.overall, marketContext.heat, backtests]);
+    multiTimeframeScore: multiTimeframeReport.score,
+    multiTimeframeBias: multiTimeframeReport.bias,
+  }), [latest.close, plan, score.overall, marketContext.heat, backtests, multiTimeframeReport.score, multiTimeframeReport.bias]);
   const holdingAdvice = useMemo(() => buildHoldingAdvice({
     position: holdingPosition,
     currentPrice: latest.close,
@@ -216,6 +220,7 @@ export default function Analysis() {
   const createPlanAlerts = () => {
     const current = getAlerts();
     const prefix = `strategy-${code}-`;
+    const compositePrefix = `composite-${code}-`;
     const nextRules = plan.triggers.map(trigger => ({
       id: `${prefix}${trigger.label}`,
       code,
@@ -223,9 +228,33 @@ export default function Analysis() {
       type: trigger.direction === 'above' ? 'above' as const : 'below' as const,
       price: trigger.price,
       enabled: true,
+      mode: 'price' as const,
+      note: trigger.message,
     }));
-    saveAlerts([...current.filter(rule => !rule.id.startsWith(prefix)), ...nextRules]);
-    setPlanAlertMessage(`已写入 ${nextRules.length} 条策略预警`);
+    const compositeRules = [
+      {
+        id: `${compositePrefix}breakout`,
+        code,
+        name: stockInfo.name,
+        type: 'above' as const,
+        price: plan.addZone.low,
+        enabled: true,
+        mode: 'composite' as const,
+        note: '突破压力 + 技术共振不偏空 + 多周期不偏空',
+      },
+      {
+        id: `${compositePrefix}risk-stop`,
+        code,
+        name: stockInfo.name,
+        type: 'below' as const,
+        price: plan.stopLoss,
+        enabled: true,
+        mode: 'composite' as const,
+        note: '跌破止损 + 技术面或多周期转空',
+      },
+    ];
+    saveAlerts([...current.filter(rule => !rule.id.startsWith(prefix) && !rule.id.startsWith(compositePrefix)), ...nextRules, ...compositeRules]);
+    setPlanAlertMessage(`已写入 ${nextRules.length + compositeRules.length} 条预警，含复合策略确认`);
     window.setTimeout(() => setPlanAlertMessage(''), 2400);
   };
 
@@ -304,7 +333,7 @@ export default function Analysis() {
               </button>
             ))}
           </div>
-          {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} onCreatePlanAlerts={createPlanAlerts} planAlertMessage={planAlertMessage} />}
+          {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} multiTimeframeReport={multiTimeframeReport} onCreatePlanAlerts={createPlanAlerts} planAlertMessage={planAlertMessage} />}
           {sideTab === 'signals' && <ProfessionalSignalsPanel signals={signals} />}
           {sideTab === 'backtest' && <BacktestPanel results={backtests} />}
           {sideTab === 'market' && <MarketPanel context={marketContext} />}
@@ -336,7 +365,7 @@ function IntradayPanel({ strategy }: { strategy: IntradayStrategy }) {
   );
 }
 
-function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline, tradeGuard, holdingAdvice, technicalReport, onCreatePlanAlerts, planAlertMessage }: {
+function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline, tradeGuard, holdingAdvice, technicalReport, multiTimeframeReport, onCreatePlanAlerts, planAlertMessage }: {
   plan: StrategyPlan;
   supportResistance: ReturnType<typeof calcSupportResistance>;
   score: ReturnType<typeof calcIndicatorScore>;
@@ -347,6 +376,7 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
   tradeGuard: TradeGuard;
   holdingAdvice: HoldingAdvice;
   technicalReport: TechnicalSignalReport;
+  multiTimeframeReport: MultiTimeframeReport;
   onCreatePlanAlerts: () => void;
   planAlertMessage: string;
 }) {
@@ -389,6 +419,8 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
       </div>
 
       <TechnicalConsensusPanel report={technicalReport} />
+
+      <MultiTimeframePanel report={multiTimeframeReport} />
 
       <CompactDecisionPanel plan={plan} supportResistance={supportResistance} score={score} />
 
@@ -505,6 +537,43 @@ function TechnicalConsensusPanel({ report }: { report: TechnicalSignalReport }) 
           <div key={`${event.name}-${event.side}`} className="flex items-start justify-between gap-2 text-[11px] border border-t-border/50 rounded px-2 py-1 bg-white/[0.02]">
             <span className={event.side === 'bullish' ? 'text-t-red' : event.side === 'bearish' ? 'text-t-green' : 'text-t-textDim'}>{event.name}</span>
             <span className="data-num text-t-textBright">{event.side === 'bullish' ? '+' : event.side === 'bearish' ? '-' : ''}{event.weight}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MultiTimeframePanel({ report }: { report: MultiTimeframeReport }) {
+  const tone = report.bias === 'bullish' ? 'red' : report.bias === 'bearish' ? 'green' : 'yellow';
+  const toneClass = tone === 'red' ? 'text-t-red border-t-red/40' : tone === 'green' ? 'text-t-green border-t-green/40' : 'text-t-yellow border-t-yellow/40';
+  const scoreWidth = `${Math.min(100, Math.abs(report.score))}%`;
+  const scoreLabel = report.score > 0 ? `+${report.score}` : String(report.score);
+  return (
+    <div className={`panel p-3 border ${toneClass}`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div>
+          <h3 className="text-sm font-semibold text-t-textBright">多周期共振</h3>
+          <p className="text-[11px] text-t-textDim mt-0.5">{report.alignment}，置信度 {report.confidence}%</p>
+        </div>
+        <span className={`data-num text-lg font-bold ${tone === 'red' ? 'text-t-red' : tone === 'green' ? 'text-t-green' : 'text-t-yellow'}`}>{scoreLabel}</span>
+      </div>
+      <div className="h-1.5 bg-t-border rounded-full overflow-hidden mb-2">
+        <div className={`h-full rounded-full ${tone === 'red' ? 'bg-t-red' : tone === 'green' ? 'bg-t-green' : 'bg-t-yellow'}`} style={{ width: scoreWidth }} />
+      </div>
+      <p className="text-xs text-t-textSecondary leading-relaxed">{report.action}</p>
+      <p className="text-[11px] text-t-yellow leading-relaxed mt-1">{report.risk}</p>
+      <div className="grid grid-cols-3 gap-1.5 mt-2">
+        {report.views.map(view => (
+          <div key={view.label} className="rounded border border-t-border bg-white/[0.03] p-2 min-w-0">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-xs font-medium text-t-textBright">{view.label}</span>
+              <span className={`data-num text-xs font-bold ${view.bias === 'bullish' ? 'text-t-red' : view.bias === 'bearish' ? 'text-t-green' : 'text-t-yellow'}`}>
+                {view.score > 0 ? '+' : ''}{view.score}
+              </span>
+            </div>
+            <p className="text-[10px] text-t-textDim truncate mt-1">{view.notes[0]}</p>
+            <p className="text-[10px] text-t-textDim truncate">{view.notes[1]}</p>
           </div>
         ))}
       </div>

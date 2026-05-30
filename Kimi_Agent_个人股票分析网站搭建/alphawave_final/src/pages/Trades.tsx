@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Percent } from 'lucide-react';
+import { AlertTriangle, DollarSign, Percent, Plus, Shield, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { getKlineData, getStockList } from '../data/mockData';
 import type { TradeRecord } from '../data/mockData';
 import { calcIndicatorScore } from '../data/analysisEngine';
 import { calcTradeFee } from '../data/appSettings';
 import { buildMarketContext } from '../data/marketContext';
+import { buildMultiTimeframeReport } from '../data/multiTimeframe';
 import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
 import { buildHoldingAdvice } from '../data/tradeGuard';
@@ -63,6 +64,44 @@ export default function Trades() {
 
   const unrealizedPnL = currentValue - totalCost;
   const totalReturn = totalCost > 0 ? (unrealizedPnL / totalCost * 100) : 0;
+  const holdingRiskRows = Array.from(holdings.entries()).flatMap(([code, h]) => {
+    if (h.shares <= 0) return [];
+    const stock = stockList.find(s => s.code === code);
+    const price = stock?.price || h.cost;
+    const kline = getKlineData(code);
+    const plan = buildStrategyPlan(code, stock?.name || code);
+    const score = calcIndicatorScore(kline);
+    const market = buildMarketContext(code, kline);
+    const multiTimeframe = buildMultiTimeframeReport(kline);
+    const position = { code, name: stock?.name || code, shares: h.shares, cost: h.cost, lastTradeDate: h.trades[h.trades.length - 1]?.date || '' };
+    const advice = buildHoldingAdvice({
+      position,
+      currentPrice: price,
+      plan,
+      scoreOverall: score.overall,
+      marketHeat: market.heat,
+    });
+    const marketValue = price * h.shares;
+    const stopLossRisk = Math.max(0, price - plan.stopLoss) * h.shares;
+    const concentration = currentValue > 0 ? marketValue / currentValue * 100 : 0;
+    return [{
+      ...position,
+      price,
+      marketValue,
+      stopLoss: plan.stopLoss,
+      stopLossRisk,
+      concentration,
+      advice,
+      score: score.overall,
+      multiScore: multiTimeframe.score,
+      multiBias: multiTimeframe.bias,
+    }];
+  }).sort((a, b) => b.stopLossRisk - a.stopLossRisk);
+  const riskCapital = holdingRiskRows.reduce((sum, row) => sum + row.stopLossRisk, 0);
+  const riskCapitalPct = currentValue > 0 ? riskCapital / currentValue * 100 : 0;
+  const maxConcentration = holdingRiskRows.reduce((max, row) => Math.max(max, row.concentration), 0);
+  const stopHitCount = holdingRiskRows.filter(row => row.price <= row.stopLoss).length;
+  const protectProfitCount = holdingRiskRows.filter(row => row.advice.label === '保护利润').length;
 
   return (
     <div className="space-y-3">
@@ -82,6 +121,57 @@ export default function Trades() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="panel p-3 border border-t-blue/25">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-1">
+              <Shield className="w-4 h-4 text-t-blue" /> 持仓风控中控
+            </h2>
+            <p className="text-[11px] text-t-textDim mt-0.5">按止损风险、单票集中度和多周期状态统一看组合风险。</p>
+          </div>
+          <div className={`text-right ${riskCapitalPct > 12 || stopHitCount > 0 ? 'text-t-green' : riskCapitalPct > 7 ? 'text-t-yellow' : 'text-t-blue'}`}>
+            <div className="text-lg font-bold data-num">{riskCapitalPct.toFixed(1)}%</div>
+            <div className="text-[10px]">组合止损风险</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mb-3">
+          <Metric label="风险资金" value={riskCapital.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} color={riskCapitalPct > 12 ? 'text-t-green' : 'text-t-textBright'} />
+          <Metric label="最大单票" value={`${maxConcentration.toFixed(1)}%`} color={maxConcentration > 35 ? 'text-t-yellow' : 'text-t-blue'} />
+          <Metric label="止损触发" value={`${stopHitCount}只`} color={stopHitCount > 0 ? 'text-t-green' : 'text-t-textBright'} />
+          <Metric label="保护利润" value={`${protectProfitCount}只`} color={protectProfitCount > 0 ? 'text-t-red' : 'text-t-textDim'} />
+        </div>
+        {holdingRiskRows.length === 0 ? (
+          <div className="rounded border border-t-border bg-white/[0.02] p-3 text-xs text-t-textDim">暂无持仓，风控中控会在记录买入后自动生成。</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            {holdingRiskRows.slice(0, 3).map(row => (
+              <div key={row.code} className="rounded border border-t-border bg-white/[0.03] p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-semibold text-t-textBright">{row.name}</div>
+                    <div className="text-[10px] text-t-textDim data-num">{row.code}</div>
+                  </div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${row.multiBias === 'bullish' ? 'bg-t-red/15 text-t-red' : row.multiBias === 'bearish' ? 'bg-t-green/15 text-t-green' : 'bg-t-yellow/15 text-t-yellow'}`}>
+                    多周期 {row.multiScore > 0 ? '+' : ''}{row.multiScore}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-2 text-[11px]">
+                  <Row label="止损" value={formatPrice(row.stopLoss)} color="text-t-green" />
+                  <Row label="风险" value={row.stopLossRisk.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} color="text-t-yellow" />
+                  <Row label="占比" value={`${row.concentration.toFixed(1)}%`} color="text-t-blue" />
+                  <Row label="建议" value={row.advice.label} color={row.advice.tone === 'red' ? 'text-t-red' : row.advice.tone === 'green' ? 'text-t-green' : row.advice.tone === 'yellow' ? 'text-t-yellow' : 'text-t-blue'} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {(riskCapitalPct > 12 || stopHitCount > 0) && (
+          <p className="text-[11px] text-t-yellow leading-relaxed mt-2 flex items-start gap-1">
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> 组合风险偏高，优先降低止损已触发或多周期偏空的仓位。
+          </p>
+        )}
       </div>
 
       {/* Holdings */}
@@ -210,6 +300,24 @@ export default function Trades() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Metric({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="rounded bg-white/[0.03] p-2">
+      <div className="text-t-textDim">{label}</div>
+      <div className={`data-num font-medium ${color}`}>{value}</div>
+    </div>
+  );
+}
+
+function Row({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <span className="text-t-textDim">{label}</span>
+      <span className={`data-num font-medium text-right ${color}`}>{value}</span>
     </div>
   );
 }

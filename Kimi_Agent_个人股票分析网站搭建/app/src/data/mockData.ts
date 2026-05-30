@@ -145,7 +145,16 @@ export function generateSignals(data: KlineData[]): Signal[] {
 export function getTrend(data: KlineData[]) { if (data.length < 60) return { trend: 'sideways' as const, strength: 0 }; const ma20 = calcMA(data, 20), ma60 = calcMA(data, 60), i = data.length - 1; if (!ma20[i] || !ma60[i]) return { trend: 'sideways' as const, strength: 0 }; const chg = (data[data.length - 1].close - data[data.length - 60].close) / data[data.length - 60].close * 100; if (ma20[i]! > ma60[i]! && chg > 5) return { trend: 'up' as const, strength: Math.min(Math.abs(chg) / 20, 1) }; if (ma20[i]! < ma60[i]! && chg < -5) return { trend: 'down' as const, strength: Math.min(Math.abs(chg) / 20, 1) }; return { trend: 'sideways' as const, strength: 0.3 }; }
 
 // ── 预警 ──
-export interface AlertRule { id: string; code: string; name: string; type: 'above' | 'below'; price: number; enabled: boolean; }
+export interface AlertRule {
+  id: string;
+  code: string;
+  name: string;
+  type: 'above' | 'below';
+  price: number;
+  enabled: boolean;
+  mode?: 'price' | 'composite';
+  note?: string;
+}
 export function getAlerts(): AlertRule[] { try { return JSON.parse(localStorage.getItem('alerts') || '[]'); } catch { return []; } }
 export function saveAlerts(a: AlertRule[]) {
   localStorage.setItem('alerts', JSON.stringify(a));

@@ -1,4 +1,5 @@
 import type { TradeRecord } from './mockData';
+import type { TimeframeBias } from './multiTimeframe';
 import type { StrategyPlan } from './strategyEngine';
 
 export interface HoldingPosition {
@@ -68,8 +69,10 @@ export function buildTradeGuard(input: {
   scoreOverall: number;
   marketHeat: number;
   bestBacktestWinRate?: number;
+  multiTimeframeScore?: number;
+  multiTimeframeBias?: TimeframeBias;
 }) {
-  const { currentPrice, plan, scoreOverall, marketHeat, bestBacktestWinRate } = input;
+  const { currentPrice, plan, scoreOverall, marketHeat, bestBacktestWinRate, multiTimeframeScore, multiTimeframeBias } = input;
   const riskDistance = currentPrice ? Math.max(0, (currentPrice - plan.stopLoss) / currentPrice * 100) : 0;
   const inEntryZone = currentPrice >= plan.entryZone.low && currentPrice <= plan.entryZone.high;
   const breakoutConfirmed = currentPrice >= plan.addZone.low && scoreOverall >= 20;
@@ -87,6 +90,14 @@ export function buildTradeGuard(input: {
 
   if (scoreOverall >= 15) passed.push(`趋势分 ${scoreOverall} 支持行动`);
   else reasons.push(`趋势分 ${scoreOverall} 不足，先等方向更明确`);
+
+  if (multiTimeframeBias === 'bullish' && (multiTimeframeScore || 0) >= 24) {
+    passed.push(`多周期共振 ${multiTimeframeScore} 支持试错`);
+  } else if (multiTimeframeBias === 'bearish') {
+    reasons.push('多周期偏空，日内买点需要降级或放弃');
+  } else if (multiTimeframeScore !== undefined) {
+    reasons.push(`多周期分 ${multiTimeframeScore} 尚未共振，先用小仓验证`);
+  }
 
   if (riskDistance > 0 && riskDistance <= 9) passed.push(`止损距离 ${riskDistance.toFixed(1)}% 可控`);
   else reasons.push(`止损距离 ${riskDistance.toFixed(1)}% 不合适，仓位容易失控`);
