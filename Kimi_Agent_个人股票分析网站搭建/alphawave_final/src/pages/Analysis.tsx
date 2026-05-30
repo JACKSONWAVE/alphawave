@@ -87,6 +87,7 @@ export default function Analysis() {
   const fullRawKline = useMemo(() => remoteKline?.length ? remoteKline : localRawKline, [localRawKline, remoteKline]);
   const rawKline = useMemo(() => days ? fullRawKline.slice(-days) : fullRawKline, [days, fullRawKline]);
   const fullKline = useMemo(() => mergeRealtimeQuoteIntoKline(fullRawKline, realtimeQuote), [fullRawKline, realtimeQuote]);
+  const backtestKline = useMemo(() => fullKline.slice(-2500), [fullKline]);
   const kline = useMemo(() => {
     if (period === 'intraday' && intradayPoints.length > 0) return intradayToKline(intradayPoints);
     return mergeRealtimeQuoteIntoKline(rawKline, realtimeQuote);
@@ -148,7 +149,7 @@ export default function Analysis() {
   const score = useMemo(() => calcIndicatorScore(kline), [kline]);
   const daily = useMemo(() => analyzeDaily(kline), [kline]);
   const plan = useMemo(() => buildStrategyPlanFromData(code, stockInfo.name, fullKline, realtimeQuote), [code, stockInfo.name, fullKline, realtimeQuote]);
-  const backtests = useMemo(() => buildBacktestSuite(kline), [kline]);
+  const backtests = useMemo(() => buildBacktestSuite(backtestKline), [backtestKline]);
   const marketContext = useMemo(() => buildMarketContext(code, kline), [code, kline]);
   const intradayStrategy = useMemo(() => buildIntradayStrategy(intradayPoints), [intradayPoints]);
   const holdingPosition = useMemo(() => getHoldingPosition(trades, code), [trades, code]);
@@ -186,7 +187,7 @@ export default function Analysis() {
   useEffect(() => {
     let active = true;
     setRemoteKline(null);
-    if (selectedStock?.hasKline) {
+    if (selectedStock?.hasKline && localRawKline.length >= 750) {
       setRemoteKlineLoading(false);
       return () => { active = false; };
     }
@@ -202,7 +203,7 @@ export default function Analysis() {
         if (active) setRemoteKlineLoading(false);
       });
     return () => { active = false; };
-  }, [code, selectedStock?.hasKline]);
+  }, [code, selectedStock?.hasKline, localRawKline.length]);
 
   useEffect(() => {
     if (period !== 'intraday') return;
@@ -262,9 +263,9 @@ export default function Analysis() {
     <div className="space-y-3">
       <div className="panel p-3 flex flex-wrap items-center gap-3">
         <StockPicker stocks={stockList} value={code} onChange={setCode} className="w-64 max-w-full" />
-        {!selectedStock?.hasKline && (
+        {(!selectedStock?.hasKline || remoteKlineLoading || remoteKline?.length) && (
           <span className={`text-[10px] px-1.5 py-0.5 rounded border ${remoteKline?.length ? 'text-t-blue border-t-blue/30 bg-t-blue/10' : 'text-t-yellow border-t-yellow/30 bg-t-yellow/10'}`}>
-            {remoteKlineLoading ? '加载远程K线' : remoteKline?.length ? `远程K线 ${remoteKline.length}` : '临时估算K线'}
+            {remoteKlineLoading ? '补齐10年K线' : remoteKline?.length ? `回测K线 ${remoteKline.length}` : '临时估算K线'}
           </span>
         )}
         <div>
@@ -335,7 +336,7 @@ export default function Analysis() {
           </div>
           {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} multiTimeframeReport={multiTimeframeReport} onCreatePlanAlerts={createPlanAlerts} planAlertMessage={planAlertMessage} />}
           {sideTab === 'signals' && <ProfessionalSignalsPanel signals={signals} />}
-          {sideTab === 'backtest' && <BacktestPanel results={backtests} />}
+          {sideTab === 'backtest' && <BacktestPanel results={backtests} dataDays={backtestKline.length} />}
           {sideTab === 'market' && <MarketPanel context={marketContext} />}
         </div>
       </div>
@@ -709,13 +710,17 @@ function Gate({ label, passed, text }: { label: string; passed: boolean; text: s
   );
 }
 
-function BacktestPanel({ results }: { results: StrategyBacktestResult[] }) {
+function BacktestPanel({ results, dataDays }: { results: StrategyBacktestResult[]; dataDays: number }) {
   const best = results[0];
+  const rangeText = best ? `${best.dataStart} ~ ${best.dataEnd}` : `${dataDays}根K线`;
   return (
     <div className="space-y-3">
       <div className="panel p-3 border border-t-blue/30 bg-t-blue/5">
-        <h3 className="text-sm font-semibold text-t-textBright mb-1">策略回测实验室</h3>
-        <p className="text-[11px] text-t-textSecondary leading-relaxed">趋势回踩、放量突破、超跌反弹、MACD低位金叉会在当前历史数据里统一回测，用来判断这只票更适合哪种打法。</p>
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <h3 className="text-sm font-semibold text-t-textBright">策略回测实验室</h3>
+          <span className="text-[10px] data-num text-t-blue whitespace-nowrap">{dataDays}根K线</span>
+        </div>
+        <p className="text-[11px] text-t-textSecondary leading-relaxed">回测固定使用全量历史样本，不跟随左侧图表周期缩短；当前区间 {rangeText}，用于判断这只票更适合哪种打法。</p>
       </div>
       {results.length === 0 ? (
         <div className="panel p-3 text-xs text-t-textDim">历史样本不足，补齐10年数据后回测可信度会明显提升。</div>
@@ -740,7 +745,7 @@ function BacktestPanel({ results }: { results: StrategyBacktestResult[] }) {
             <Row label="利润因子" value={String(result.profitFactor)} color={result.profitFactor >= 1.2 ? 'text-t-red' : 'text-t-yellow'} />
             <Row label="期望收益" value={`${result.expectancy}%`} color={result.expectancy >= 0 ? 'text-t-red' : 'text-t-green'} />
             <Row label="连续亏损" value={`${result.maxConsecutiveLosses}次`} color={result.maxConsecutiveLosses <= 3 ? 'text-t-blue' : 'text-t-yellow'} />
-            <Row label="可信度" value={result.sampleSize >= 20 ? '可参考' : '样本偏少'} color={result.sampleSize >= 20 ? 'text-t-red' : 'text-t-yellow'} />
+            <Row label="可信度" value={result.credibility === '高' ? '高可信' : result.credibility === '中' ? '可参考' : '样本偏少'} color={result.credibility === '高' ? 'text-t-red' : result.credibility === '中' ? 'text-t-blue' : 'text-t-yellow'} />
             <Row label="成本模型" value={result.costModel} color="text-t-textDim" />
           </div>
           {result.trades.length > 0 && (

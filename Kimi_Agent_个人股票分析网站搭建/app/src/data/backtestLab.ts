@@ -32,6 +32,10 @@ export interface StrategyBacktestResult {
   expectancy: number;
   maxConsecutiveLosses: number;
   costModel: string;
+  dataDays: number;
+  dataStart: string;
+  dataEnd: string;
+  credibility: '高' | '中' | '低';
   trades: StrategyTrade[];
   verdict: string;
 }
@@ -86,6 +90,7 @@ function summarize(
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 9.99 : 0;
   const payoffRatio = Math.abs(avgLoss) > 0 ? avgWin / Math.abs(avgLoss) : avgWin > 0 ? 9.99 : 0;
   const expectancy = avgReturn;
+  const credibility: StrategyBacktestResult['credibility'] = sampleSize >= 30 ? '高' : sampleSize >= 12 ? '中' : '低';
   const verdict = sampleSize < 12
     ? '样本偏少，只能作为观察策略，不能直接放大仓位。'
     : winRate >= 58 && profitFactor >= 1.35 && expectancy > 0.6
@@ -113,6 +118,10 @@ function summarize(
     expectancy: pct(expectancy),
     maxConsecutiveLosses: maxConsecutiveLosses(returns),
     costModel: `双边滑点与交易成本约${ROUND_TRIP_COST_PCT}%`,
+    dataDays: data.length,
+    dataStart: data[0]?.date || '-',
+    dataEnd: data[data.length - 1]?.date || '-',
+    credibility,
     trades,
     verdict,
   };
