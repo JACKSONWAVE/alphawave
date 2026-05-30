@@ -260,8 +260,8 @@ export default function Analysis() {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="panel p-3 flex flex-wrap items-center gap-3">
+    <div className="h-full min-h-0 overflow-hidden flex flex-col gap-3">
+      <div className="panel p-3 flex flex-wrap items-center gap-3 flex-shrink-0">
         <StockPicker stocks={stockList} value={code} onChange={setCode} className="w-64 max-w-full" />
         {(!selectedStock?.hasKline || remoteKlineLoading || remoteKline?.length) && (
           <span className={`text-[10px] px-1.5 py-0.5 rounded border ${remoteKline?.length ? 'text-t-blue border-t-blue/30 bg-t-blue/10' : 'text-t-yellow border-t-yellow/30 bg-t-yellow/10'}`}>
@@ -290,8 +290,8 @@ export default function Analysis() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-        <div className="lg:col-span-3 space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_450px] gap-3 flex-1 min-h-0 overflow-hidden">
+        <div className="min-h-0 overflow-hidden flex flex-col gap-3">
           <div className="panel p-2 flex flex-wrap items-center gap-1">
             {indicatorOptions.map(indicator => (
               <button key={indicator.key} onClick={() => toggleIndicator(indicator.key)}
@@ -313,31 +313,35 @@ export default function Analysis() {
             </button>
           </div>
 
-          <div className="panel p-3">
+          <div className="panel p-3 flex-shrink-0">
             <ProKlineChart data={chartData} indicators={indicators} showSignals={showSignals} chartMode={chartMode} plan={plan} />
           </div>
 
           {period === 'intraday' && intradayStrategy && <IntradayPanel strategy={intradayStrategy} />}
 
-          {indicators.includes('macd') && <SubChart data={chartData} dataKey="macd" label="MACD" color="#3b82f6" lines={[{ key: 'dif', color: '#f59e0b' }, { key: 'dea', color: '#8b5cf6' }]} hasZero />}
-          {indicators.includes('rsi') && <SubChart data={chartData} dataKey="rsi" label="RSI(14)" color="#3b82f6" domain={[0, 100]} refs={[{ y: 70, color: '#ef4444' }, { y: 30, color: '#22c55e' }]} />}
-          {indicators.includes('kdj') && <SubChart data={chartData} label="KDJ(9,3,3)" lines={[{ key: 'k', color: '#f59e0b' }, { key: 'd', color: '#3b82f6' }, { key: 'j', color: '#22c55e' }]} />}
-          {indicators.includes('cci') && <SubChart data={chartData} dataKey="cci" label="CCI(14)" color="#ec4899" hasZero refs={[{ y: 100, color: '#ef4444' }, { y: -100, color: '#22c55e' }]} />}
-          {indicators.includes('wr') && <SubChart data={chartData} dataKey="wr" label="WR(14)" color="#14b8a6" domain={[-100, 0]} refs={[{ y: -20, color: '#ef4444' }, { y: -80, color: '#22c55e' }]} />}
+          <div className="min-h-0 overflow-hidden grid grid-rows-2 gap-3">
+            {indicators.includes('macd') && <SubChart data={chartData} dataKey="macd" label="MACD" color="#3b82f6" lines={[{ key: 'dif', color: '#f59e0b' }, { key: 'dea', color: '#8b5cf6' }]} hasZero />}
+            {indicators.includes('rsi') && <SubChart data={chartData} dataKey="rsi" label="RSI(14)" color="#3b82f6" domain={[0, 100]} refs={[{ y: 70, color: '#ef4444' }, { y: 30, color: '#22c55e' }]} />}
+            {indicators.includes('kdj') && <SubChart data={chartData} label="KDJ(9,3,3)" lines={[{ key: 'k', color: '#f59e0b' }, { key: 'd', color: '#3b82f6' }, { key: 'j', color: '#22c55e' }]} />}
+            {indicators.includes('cci') && <SubChart data={chartData} dataKey="cci" label="CCI(14)" color="#ec4899" hasZero refs={[{ y: 100, color: '#ef4444' }, { y: -100, color: '#22c55e' }]} />}
+            {indicators.includes('wr') && <SubChart data={chartData} dataKey="wr" label="WR(14)" color="#14b8a6" domain={[-100, 0]} refs={[{ y: -20, color: '#ef4444' }, { y: -80, color: '#22c55e' }]} />}
+          </div>
         </div>
 
-        <div className="space-y-3 lg:sticky lg:top-3 lg:self-start lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto scrollbar-thin pr-1">
-          <div className="flex border-b border-t-border">
+        <div className="min-h-0 overflow-hidden flex flex-col">
+          <div className="flex border-b border-t-border flex-shrink-0">
             {(['plan', 'signals', 'backtest', 'market'] as SideTab[]).map(tab => (
               <button key={tab} onClick={() => setSideTab(tab)} className={`flex-1 py-1.5 text-xs ${sideTab === tab ? 'text-t-blue border-b-2 border-t-blue' : 'text-t-textDim hover:text-t-text'}`}>
                 {tab === 'plan' ? '计划' : tab === 'signals' ? '信号' : tab === 'backtest' ? '回测' : '市场'}
               </button>
             ))}
           </div>
-          {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} multiTimeframeReport={multiTimeframeReport} onCreatePlanAlerts={createPlanAlerts} planAlertMessage={planAlertMessage} />}
-          {sideTab === 'signals' && <ProfessionalSignalsPanel signals={signals} />}
-          {sideTab === 'backtest' && <BacktestPanel results={backtests} dataDays={backtestKline.length} />}
-          {sideTab === 'market' && <MarketPanel context={marketContext} />}
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin pr-1 space-y-3 pt-3">
+            {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} multiTimeframeReport={multiTimeframeReport} onCreatePlanAlerts={createPlanAlerts} planAlertMessage={planAlertMessage} />}
+            {sideTab === 'signals' && <ProfessionalSignalsPanel signals={signals} />}
+            {sideTab === 'backtest' && <BacktestPanel results={backtests} dataDays={backtestKline.length} />}
+            {sideTab === 'market' && <MarketPanel context={marketContext} />}
+          </div>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Activity,
@@ -19,7 +19,7 @@ import {
   Target,
 } from 'lucide-react';
 
-import { calcMA, getCoreStockList, getKlineData, getMarketIndex, getStockList, getTrend, type TradeRecord } from '../data/mockData';
+import { calcMA, getCoreStockList, getKlineData, getMarketIndex, getStockList, getTrend, type StockListItem, type TradeRecord } from '../data/mockData';
 import { calcIndicatorScore, calcSupportResistance } from '../data/analysisEngine';
 import { buildMarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
@@ -34,6 +34,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import RealtimeStatus from '../components/RealtimeStatus';
 
 type DeskLane = '可试错' | '持仓观察' | '风险减仓' | '等待回踩';
+type DeskSource = 'auto' | 'core';
 
 interface DeskStock {
   code: string;
@@ -80,7 +81,7 @@ function laneAction(lane: DeskLane, entryLow: number, entryHigh: number, stopLos
   return `持有观察，目标 ${formatPrice(target)}`;
 }
 
-function buildDeskStocks(staticStocks: ReturnType<typeof getCoreStockList>, realtimeQuotes: ReturnType<typeof useRealtimeQuotes>['quotes']): DeskStock[] {
+function buildDeskStocks(staticStocks: StockListItem[], realtimeQuotes: ReturnType<typeof useRealtimeQuotes>['quotes']): DeskStock[] {
   const rtMap = new Map(realtimeQuotes.map(quote => [quote.code, quote]));
   return staticStocks.map(stock => {
     const realtime = rtMap.get(stock.code);
@@ -130,15 +131,27 @@ export default function Dashboard() {
   const indexData = useMemo(() => getMarketIndex(), []);
   const allStocks = useMemo(() => getStockList(), []);
   const staticStocks = useMemo(() => getCoreStockList(), []);
-  const stockOrder = useMemo(() => new Map(staticStocks.map((stock, index) => [stock.code, index])), [staticStocks]);
   const { quotes: realtimeQuotes, loading, refresh } = useRealtimeQuotes({});
   const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
   const [activeLane, setActiveLane] = useState<DeskLane | '全部'>('全部');
+  const [deskSource, setDeskSource] = useLocalStorage<DeskSource>('dashboard_desk_source', 'auto');
   const [selectedCode, setSelectedCode] = useState(staticStocks[0]?.code || '603019.SH');
 
-  const deskStocks = useMemo(() => buildDeskStocks(staticStocks, realtimeQuotes), [staticStocks, realtimeQuotes]);
   const holdings = useMemo(() => buildHoldingPositions(trades), [trades]);
   const portfolioWorkbench = useMemo(() => buildPortfolioWorkbench(trades), [trades]);
+  const dailyPicks = useMemo(() => buildDailyStrategyPicks(16), [realtimeQuotes]);
+  const deskUniverse = useMemo(() => {
+    if (deskSource === 'core') return staticStocks;
+    const codes = Array.from(new Set([
+      ...dailyPicks.map(pick => pick.code),
+      ...portfolioWorkbench.layers.flatMap(layer => layer.layer === '进攻' || layer.layer === '防守' ? layer.picks.slice(0, 4).map(pick => pick.code) : []),
+      ...holdings.map(position => position.code),
+    ]));
+    const stockMap = new Map(allStocks.map(stock => [stock.code, stock]));
+    return codes.map(code => stockMap.get(code)).filter((stock): stock is StockListItem => Boolean(stock)).slice(0, 18);
+  }, [allStocks, dailyPicks, deskSource, holdings, portfolioWorkbench.layers, staticStocks]);
+  const stockOrder = useMemo(() => new Map(deskUniverse.map((stock, index) => [stock.code, index])), [deskUniverse]);
+  const deskStocks = useMemo(() => buildDeskStocks(deskUniverse, realtimeQuotes), [deskUniverse, realtimeQuotes]);
   const selected = deskStocks.find(stock => stock.code === selectedCode) || deskStocks[0];
   const visibleStocks = useMemo(() => (
     activeLane === '全部' ? deskStocks : deskStocks.filter(stock => stock.lane === activeLane)
@@ -162,7 +175,6 @@ export default function Dashboard() {
   const holdingAdvice = selected && selectedPlan
     ? buildHoldingAdvice({ position: selectedPosition, currentPrice: selected.price, plan: selectedPlan, scoreOverall: selected.score, marketHeat })
     : null;
-  const dailyPicks = useMemo(() => buildDailyStrategyPicks(10), [realtimeQuotes]);
   const etfPicks = useMemo(() => buildETFStrategyPicks(8), []);
   const marketScanner = useMemo(() => buildMarketScanner(), []);
   const auditItems = useMemo(() => buildRequirementAudit(), []);
@@ -176,6 +188,13 @@ export default function Dashboard() {
     .filter(item => item.status !== 'healthy')
     .sort((a, b) => a.qualityScore - b.qualityScore)
     .slice(0, 3);
+
+  useEffect(() => {
+    if (!deskStocks.length) return;
+    if (!deskStocks.some(stock => stock.code === selectedCode)) {
+      setSelectedCode(deskStocks[0].code);
+    }
+  }, [deskStocks, selectedCode]);
 
   return (
     <div className="space-y-3">
@@ -194,12 +213,12 @@ export default function Dashboard() {
             <p className="text-[11px] text-t-textDim mt-1">从 {allStocks.length} 只沪深京股票中筛选，优先看龙头突破、量价突破、MACD/KDJ/RSI 共振和趋势回踩。</p>
           </div>
           <div className="text-right text-xs data-num">
-            <div className="text-t-red font-bold">{dailyPicks.length} 只入选</div>
+            <div className="text-t-red font-bold">{Math.min(10, dailyPicks.length)} 只入选</div>
             <div className="text-t-textDim">全市场热度 {marketHeat}%</div>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-0">
-          {dailyPicks.map((pick, index) => (
+          {dailyPicks.slice(0, 10).map((pick, index) => (
             <Link key={pick.code} to={`/analysis?code=${pick.code}`} className="p-3 border-r border-b border-t-border hover:bg-white/[0.035] transition-colors min-h-[154px]">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -311,18 +330,24 @@ export default function Dashboard() {
                   <Gauge className="w-4 h-4 text-t-blue" />
                   <h1 className="text-base font-semibold">交易驾驶舱</h1>
                 </div>
-                <p className="text-xs text-t-textDim mt-1">先判断市场能不能做，再看个股是否触发计划。</p>
+                <p className="text-xs text-t-textDim mt-1">{deskSource === 'auto' ? '自动使用全市场策略池，随模型信号重排。' : '核心池模式，固定跟踪你的长期重点票。'}</p>
               </div>
-              <button onClick={refresh} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-t-border text-xs text-t-textDim hover:text-t-text hover:bg-t-panelHover">
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                同步实时
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded border border-t-border overflow-hidden">
+                  <button onClick={() => setDeskSource('auto')} className={`px-2.5 py-1 text-xs ${deskSource === 'auto' ? 'bg-t-blue text-white' : 'text-t-textDim hover:text-t-text hover:bg-t-panelHover'}`}>自动策略池</button>
+                  <button onClick={() => setDeskSource('core')} className={`px-2.5 py-1 text-xs border-l border-t-border ${deskSource === 'core' ? 'bg-t-blue text-white' : 'text-t-textDim hover:text-t-text hover:bg-t-panelHover'}`}>核心池</button>
+                </div>
+                <button onClick={refresh} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-t-border text-xs text-t-textDim hover:text-t-text hover:bg-t-panelHover">
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                  同步实时
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-t-border">
             <CommandMetric icon={Activity} label="市场温度" value={`${marketHeat}%`} tone={marketHeat >= 65 ? 'text-t-red' : marketHeat <= 35 ? 'text-t-green' : 'text-t-yellow'} detail={`${rising}/${allStocks.length} 上涨`} />
-            <CommandMetric icon={Crosshair} label="Top策略" value={`${dailyPicks.length}只`} tone="text-t-red" detail="全市场模型入选" />
+            <CommandMetric icon={Crosshair} label="驾驶舱池" value={`${deskStocks.length}只`} tone="text-t-red" detail={deskSource === 'auto' ? '自动候选入舱' : '核心票固定跟踪'} />
             <CommandMetric icon={ShieldCheck} label="风险票" value={`${riskStocks.length}只`} tone={riskStocks.length ? 'text-t-green' : 'text-t-text'} detail="需减仓/止损关注" />
             <CommandMetric icon={Bot} label="持仓跟踪" value={`${holdings.length}只`} tone="text-t-blue" detail="按底仓/波段处理" />
           </div>
@@ -439,6 +464,7 @@ export default function Dashboard() {
         <div className="px-3 py-2 border-b border-t-border flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2"><LineChart className="w-4 h-4 text-t-blue" /> 股票池作战台</h2>
           <div className="flex flex-wrap gap-1">
+            <span className="px-2 py-0.5 rounded text-xs text-t-textDim border border-t-border">{deskSource === 'auto' ? '自动更新' : '核心池'}</span>
             {(['全部', ...laneOrder] as Array<DeskLane | '全部'>).map(lane => (
               <button key={lane} onClick={() => setActiveLane(lane)} className={`px-2 py-0.5 rounded text-xs ${activeLane === lane ? 'bg-t-blue text-white' : 'text-t-textDim hover:text-t-text'}`}>{lane}</button>
             ))}
