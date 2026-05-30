@@ -290,6 +290,21 @@ function hasConfirmation(events: TechnicalEvent[], side: 'bullish' | 'bearish') 
   return events.filter(event => event.side === side && keyTags.includes(event.tag)).length >= 2;
 }
 
+function confidenceScore(events: TechnicalEvent[], side: 'bullish' | 'bearish') {
+  const keyTags: TechnicalEventTag[] = ['macd', 'kdj', 'boll', 'volume', 'ma-cross'];
+  const opposite = side === 'bullish' ? 'bearish' : 'bullish';
+  const sideEvents = events.filter(event => event.side === side);
+  const oppositeEvents = events.filter(event => event.side === opposite);
+  const sideWeight = sideEvents.reduce((sum, event) => sum + event.weight, 0);
+  const oppositeWeight = oppositeEvents.reduce((sum, event) => sum + event.weight, 0);
+  const keyCount = new Set(sideEvents.filter(event => keyTags.includes(event.tag)).map(event => event.tag)).size;
+  const peakWeight = sideEvents.reduce((max, event) => Math.max(max, event.weight), 0);
+  const breadthBonus = Math.max(0, sideEvents.length - 2) * 2;
+  const keyBonus = keyCount * 4;
+  const peakBonus = peakWeight >= 18 ? 4 : peakWeight >= 14 ? 2 : 0;
+  return clamp(Math.round(42 + sideWeight * 0.55 - oppositeWeight * 0.35 + keyBonus + breadthBonus + peakBonus), 55, 96);
+}
+
 function buildSignal(data: KlineData[], indicators: IndicatorSet, index: number, events: TechnicalEvent[]): ScoredSignal | null {
   const { bullish, bearish } = scoreEvents(events);
   const close = data[index].close;
@@ -307,7 +322,7 @@ function buildSignal(data: KlineData[], indicators: IndicatorSet, index: number,
 
   if (buyQualified) {
     const names = sortedNames(events, 'bullish');
-    const score = clamp(Math.round(bullish - bearish * 0.45), 55, 96);
+    const score = confidenceScore(events, 'bullish');
     return {
       type: 'buy',
       sourceIndex: index,
@@ -323,7 +338,7 @@ function buildSignal(data: KlineData[], indicators: IndicatorSet, index: number,
   }
 
   const names = sortedNames(events, 'bearish');
-  const score = clamp(Math.round(bearish - bullish * 0.45), 55, 96);
+  const score = confidenceScore(events, 'bearish');
   return {
     type: 'sell',
     sourceIndex: index,
