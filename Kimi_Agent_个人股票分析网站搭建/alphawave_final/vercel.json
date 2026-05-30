@@ -13,6 +13,7 @@
   "rewrites": [
     { "source": "/analysis", "destination": "/index.html" },
     { "source": "/watchlist", "destination": "/index.html" },
+    { "source": "/portfolio", "destination": "/index.html" },
     { "source": "/screener", "destination": "/index.html" },
     { "source": "/trades", "destination": "/index.html" },
     { "source": "/intel", "destination": "/index.html" },
