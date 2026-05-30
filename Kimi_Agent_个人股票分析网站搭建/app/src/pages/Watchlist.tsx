@@ -19,6 +19,7 @@ const defaultWatchlist: WatchItem[] = [
   { code: '002230.SZ', group: 'AI', note: 'AI应用', alertPrice: 45, alertEnabled: true },
   { code: '601012.SH', group: '观察', note: '光伏龙头', alertPrice: 16, alertEnabled: false },
   { code: '300059.SZ', group: '券商', note: '券商龙头', alertPrice: 15, alertEnabled: true },
+  { code: '510210.SH', group: 'ETF', note: '上证指数底仓', alertPrice: 0.86, alertEnabled: false },
   { code: '510300.SH', group: 'ETF', note: '沪深300底仓', alertPrice: 4.0, alertEnabled: false },
   { code: '512890.SH', group: 'ETF', note: '红利低波防守', alertPrice: 1.16, alertEnabled: false },
   { code: '518880.SH', group: 'ETF', note: '黄金避险', alertPrice: 6.2, alertEnabled: false },

@@ -23,6 +23,18 @@ export interface ETFProfile {
 
 const rawETFProfiles: Array<Omit<ETFProfile, 'latest' | 'high52w' | 'low52w'> & { price: number; changePct: number }> = [
   {
+    code: '510210.SH',
+    name: '上证综指ETF',
+    industry: '宽基ETF',
+    theme: '上证综合指数',
+    role: '宽基底仓',
+    risk: 'medium',
+    price: 0.892,
+    changePct: 0.55,
+    expenseNote: '跟踪上证综合指数，适合观察沪市整体风险偏好。',
+    strategyNote: '上证指数站稳20日线、成交额温和放大时可做底仓；跌破60日线先降仓。',
+  },
+  {
     code: '510300.SH',
     name: '沪深300ETF',
     industry: '宽基ETF',

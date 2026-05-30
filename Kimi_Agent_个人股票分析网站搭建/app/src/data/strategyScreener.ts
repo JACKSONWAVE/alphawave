@@ -290,9 +290,13 @@ export function buildDailyStrategyPicks(limit = 10): DailyStrategyPick[] {
 
 export function buildETFStrategyPicks(limit = 8): DailyStrategyPick[] {
   const etfCodes = new Set(etfProfiles.map(item => item.code));
-  return getStockList()
+  const priority = ['510210.SH', '510300.SH', '512890.SH', '518880.SH', '512760.SH', '159327.SZ', '515050.SH', '510880.SH'];
+  const scored = getStockList()
     .filter(stock => etfCodes.has(stock.code))
     .map(scoreStrategyStock)
-    .sort((a, b) => b.confidence - a.confidence || b.score - a.score)
-    .slice(0, limit);
+    .sort((a, b) => b.confidence - a.confidence || b.score - a.score);
+  const selected = priority
+    .map(code => scored.find(item => item.code === code))
+    .filter((item): item is DailyStrategyPick => Boolean(item));
+  return [...selected, ...scored.filter(item => !priority.includes(item.code))].slice(0, limit);
 }
