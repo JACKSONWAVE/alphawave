@@ -25,8 +25,8 @@ import { buildMarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
 import { buildHoldingAdvice, buildHoldingPositions, buildTradeGuard, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
-import { buildDailyStrategyPicks, buildETFStrategyPicks, type DailyStrategyPick } from '../data/strategyScreener';
-import { buildMarketScanner, type IndustryHeat } from '../data/marketScanner';
+import { buildDailyStrategyPicks, buildETFStrategyPicks, scoreStrategyStock, type DailyStrategyPick } from '../data/strategyScreener';
+import { buildMarketScanner, type IndustryHeat, type MarketScannerReport } from '../data/marketScanner';
 import { buildDataFreshness, buildRequirementAudit, type SystemAuditItem } from '../data/systemAudit';
 import { buildPortfolioWorkbench } from '../data/portfolioEngine';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
@@ -35,6 +35,7 @@ import RealtimeStatus from '../components/RealtimeStatus';
 
 type DeskLane = '可试错' | '持仓观察' | '风险减仓' | '等待回踩';
 type DeskSource = 'auto' | 'core';
+type DeskMode = 'premarket' | 'intraday' | 'review';
 
 interface DeskStock {
   code: string;
@@ -56,9 +57,21 @@ interface DeskStock {
   trendText: string;
   spark: number[];
   isRealtime: boolean;
+  strategy: string;
+  confidence: number;
+  pickReason: string;
+  intelScore: number;
+  intelLabel: string;
+  modeReason: string;
+  autoRank: number;
 }
 
 const laneOrder: DeskLane[] = ['可试错', '持仓观察', '风险减仓', '等待回踩'];
+const deskModeMeta: Record<DeskMode, { label: string; hint: string }> = {
+  premarket: { label: '盘前', hint: '盘前先定候选和计划价，少看短线波动。' },
+  intraday: { label: '盘中', hint: '盘中看实时触发、量价延续和止损距离。' },
+  review: { label: '复盘', hint: '复盘看降级原因、风险票和第二天观察名单。' },
+};
 
 function pickLane(score: number, changePct: number, price: number, entryLow: number, entryHigh: number, stopLoss: number): DeskLane {
   if (price <= stopLoss || score <= -30 || changePct <= -4) return '风险减仓';
@@ -81,10 +94,38 @@ function laneAction(lane: DeskLane, entryLow: number, entryHigh: number, stopLos
   return `持有观察，目标 ${formatPrice(target)}`;
 }
 
-function buildDeskStocks(staticStocks: StockListItem[], realtimeQuotes: ReturnType<typeof useRealtimeQuotes>['quotes']): DeskStock[] {
+function calcIndustryIntel(stock: StockListItem, report: MarketScannerReport) {
+  const hot = report.hotIndustries.find(item => item.industry === stock.industry);
+  const risk = report.riskIndustries.find(item => item.industry === stock.industry);
+  if (hot && hot.heat >= 58) {
+    const score = Math.min(12, Math.max(3, Math.round((hot.heat - 45) / 4)));
+    return { score, label: `主题+${score}` };
+  }
+  if (risk && risk.heat <= 35) {
+    const score = -Math.min(10, Math.max(3, Math.round((42 - risk.heat) / 3)));
+    return { score, label: `行业${score}` };
+  }
+  return { score: 0, label: '资讯0' };
+}
+
+function modeReason(mode: DeskMode, lane: DeskLane, pick?: DailyStrategyPick) {
+  if (mode === 'premarket') return pick ? `盘前按${pick.strategy}、计划买区和风控线入池` : '盘前只保留核心跟踪，等待策略分确认';
+  if (mode === 'intraday') return lane === '可试错' ? '盘中已接近触发区，优先观察成交和回落承接' : '盘中未触发，只保留价格监控';
+  return lane === '风险减仓' ? '复盘优先检查降级和止损纪律' : '复盘记录明日是否继续观察';
+}
+
+function buildDeskStocks(
+  staticStocks: StockListItem[],
+  realtimeQuotes: ReturnType<typeof useRealtimeQuotes>['quotes'],
+  pickMap: Map<string, DailyStrategyPick>,
+  scanner: MarketScannerReport,
+  mode: DeskMode,
+): DeskStock[] {
   const rtMap = new Map(realtimeQuotes.map(quote => [quote.code, quote]));
   return staticStocks.map(stock => {
     const realtime = rtMap.get(stock.code);
+    const pick = pickMap.get(stock.code) || scoreStrategyStock(stock);
+    const intel = calcIndustryIntel(stock, scanner);
     const kline = getKlineData(stock.code);
     const latest = kline[kline.length - 1];
     const price = realtime?.price ?? stock.price;
@@ -102,6 +143,7 @@ function buildDeskStocks(staticStocks: StockListItem[], realtimeQuotes: ReturnTy
     const riskDistance = price ? Math.max(0, (price - plan.stopLoss) / price * 100) : 0;
     const spark = kline.slice(-34).map(item => item.close);
     const trendText = trend.trend === 'up' ? '上升' : trend.trend === 'down' ? '下降' : ma20 && ma60 && ma20 > ma60 ? '修复' : '震荡';
+    const autoRank = score.overall + pick.score * 0.65 + pick.confidence * 0.25 + intel.score + (lane === '可试错' ? 12 : lane === '风险减仓' ? -18 : 0);
 
     return {
       code: stock.code,
@@ -123,8 +165,15 @@ function buildDeskStocks(staticStocks: StockListItem[], realtimeQuotes: ReturnTy
       trendText,
       spark,
       isRealtime: Boolean(realtime),
+      strategy: pick.strategy,
+      confidence: pick.confidence,
+      pickReason: pick.reason,
+      intelScore: intel.score,
+      intelLabel: intel.label,
+      modeReason: modeReason(mode, lane, pick),
+      autoRank,
     };
-  });
+  }).sort((a, b) => b.autoRank - a.autoRank);
 }
 
 export default function Dashboard() {
@@ -135,23 +184,33 @@ export default function Dashboard() {
   const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
   const [activeLane, setActiveLane] = useState<DeskLane | '全部'>('全部');
   const [deskSource, setDeskSource] = useLocalStorage<DeskSource>('dashboard_desk_source', 'auto');
+  const [deskMode, setDeskMode] = useLocalStorage<DeskMode>('dashboard_desk_mode', 'intraday');
   const [selectedCode, setSelectedCode] = useState(staticStocks[0]?.code || '603019.SH');
 
   const holdings = useMemo(() => buildHoldingPositions(trades), [trades]);
   const portfolioWorkbench = useMemo(() => buildPortfolioWorkbench(trades), [trades]);
   const dailyPicks = useMemo(() => buildDailyStrategyPicks(16), [realtimeQuotes]);
+  const etfPicks = useMemo(() => buildETFStrategyPicks(8), []);
+  const marketScanner = useMemo(() => buildMarketScanner(), []);
+  const pickMap = useMemo(() => new Map([...dailyPicks, ...etfPicks].map(pick => [pick.code, pick])), [dailyPicks, etfPicks]);
   const deskUniverse = useMemo(() => {
     if (deskSource === 'core') return staticStocks;
+    const attackCodes = portfolioWorkbench.layers.flatMap(layer => layer.layer === '进攻' || layer.layer === '防守' ? layer.picks.slice(0, 5).map(pick => pick.code) : []);
+    const riskCodes = dailyPicks.filter(pick => pick.riskLevel === 'high').slice(0, 4).map(pick => pick.code);
+    const modeCodes = deskMode === 'review'
+      ? [...riskCodes, ...dailyPicks.slice(0, 8).map(pick => pick.code)]
+      : deskMode === 'premarket'
+        ? [...dailyPicks.slice(0, 10).map(pick => pick.code), ...etfPicks.slice(0, 4).map(pick => pick.code)]
+        : [...dailyPicks.map(pick => pick.code), ...attackCodes];
     const codes = Array.from(new Set([
-      ...dailyPicks.map(pick => pick.code),
-      ...portfolioWorkbench.layers.flatMap(layer => layer.layer === '进攻' || layer.layer === '防守' ? layer.picks.slice(0, 4).map(pick => pick.code) : []),
+      ...modeCodes,
       ...holdings.map(position => position.code),
     ]));
     const stockMap = new Map(allStocks.map(stock => [stock.code, stock]));
     return codes.map(code => stockMap.get(code)).filter((stock): stock is StockListItem => Boolean(stock)).slice(0, 18);
-  }, [allStocks, dailyPicks, deskSource, holdings, portfolioWorkbench.layers, staticStocks]);
+  }, [allStocks, dailyPicks, deskMode, deskSource, etfPicks, holdings, portfolioWorkbench.layers, staticStocks]);
   const stockOrder = useMemo(() => new Map(deskUniverse.map((stock, index) => [stock.code, index])), [deskUniverse]);
-  const deskStocks = useMemo(() => buildDeskStocks(deskUniverse, realtimeQuotes), [deskUniverse, realtimeQuotes]);
+  const deskStocks = useMemo(() => buildDeskStocks(deskUniverse, realtimeQuotes, pickMap, marketScanner, deskMode), [deskMode, deskUniverse, marketScanner, pickMap, realtimeQuotes]);
   const selected = deskStocks.find(stock => stock.code === selectedCode) || deskStocks[0];
   const visibleStocks = useMemo(() => (
     activeLane === '全部' ? deskStocks : deskStocks.filter(stock => stock.lane === activeLane)
@@ -175,8 +234,6 @@ export default function Dashboard() {
   const holdingAdvice = selected && selectedPlan
     ? buildHoldingAdvice({ position: selectedPosition, currentPrice: selected.price, plan: selectedPlan, scoreOverall: selected.score, marketHeat })
     : null;
-  const etfPicks = useMemo(() => buildETFStrategyPicks(8), []);
-  const marketScanner = useMemo(() => buildMarketScanner(), []);
   const auditItems = useMemo(() => buildRequirementAudit(), []);
   const freshness = useMemo(() => buildDataFreshness(), []);
   const doneCount = auditItems.filter(item => item.status === 'done').length;
@@ -200,7 +257,7 @@ export default function Dashboard() {
     <div className="space-y-3">
       <RealtimeStatus />
 
-      <MarketRadarPanel report={marketScanner} />
+      <MarketRadarPanel report={marketScanner} deskMode={deskMode} />
 
       <PortfolioCommandPanel workbench={portfolioWorkbench} />
 
@@ -330,9 +387,16 @@ export default function Dashboard() {
                   <Gauge className="w-4 h-4 text-t-blue" />
                   <h1 className="text-base font-semibold">交易驾驶舱</h1>
                 </div>
-                <p className="text-xs text-t-textDim mt-1">{deskSource === 'auto' ? '自动使用全市场策略池，随模型信号重排。' : '核心池模式，固定跟踪你的长期重点票。'}</p>
+                <p className="text-xs text-t-textDim mt-1">{deskSource === 'auto' ? `${deskModeMeta[deskMode].hint} 自动池会解释每只票为何入选。` : '核心池模式，固定跟踪你的长期重点票。'}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded border border-t-border overflow-hidden">
+                  {(Object.keys(deskModeMeta) as DeskMode[]).map(mode => (
+                    <button key={mode} onClick={() => setDeskMode(mode)} className={`px-2.5 py-1 text-xs ${deskMode === mode ? 'bg-t-yellow text-black' : 'text-t-textDim hover:text-t-text hover:bg-t-panelHover'} ${mode !== 'premarket' ? 'border-l border-t-border' : ''}`}>
+                      {deskModeMeta[mode].label}
+                    </button>
+                  ))}
+                </div>
                 <div className="inline-flex rounded border border-t-border overflow-hidden">
                   <button onClick={() => setDeskSource('auto')} className={`px-2.5 py-1 text-xs ${deskSource === 'auto' ? 'bg-t-blue text-white' : 'text-t-textDim hover:text-t-text hover:bg-t-panelHover'}`}>自动策略池</button>
                   <button onClick={() => setDeskSource('core')} className={`px-2.5 py-1 text-xs border-l border-t-border ${deskSource === 'core' ? 'bg-t-blue text-white' : 'text-t-textDim hover:text-t-text hover:bg-t-panelHover'}`}>核心池</button>
@@ -364,7 +428,12 @@ export default function Dashboard() {
                     <span className="text-sm font-semibold text-t-textBright">{stock.name}</span>
                     <span className={`text-xs data-num ${stock.changePct >= 0 ? 'text-t-red' : 'text-t-green'}`}>{formatPct(stock.changePct)}</span>
                   </div>
-                  <div className="text-[11px] text-t-textDim mt-1 truncate">{stock.action}</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-[10px]">
+                    <span className="px-1 rounded bg-t-blue/10 text-t-blue">{stock.strategy}</span>
+                    <span className={stock.intelScore >= 0 ? 'text-t-red' : 'text-t-green'}>{stock.intelLabel}</span>
+                    <span className="text-t-textDim">置信{stock.confidence}%</span>
+                  </div>
+                  <div className="text-[11px] text-t-textDim mt-1 truncate">{stock.modeReason}</div>
                 </button>
               ))}
             </div>
@@ -394,6 +463,8 @@ export default function Dashboard() {
                       <ActionLine label="止损距离" value={`${selected.riskDistance.toFixed(1)}%`} />
                       <ActionLine label="止损 / 目标" value={`${formatPrice(selected.stopLoss)} / ${formatPrice(selected.target)}`} />
                       <ActionLine label="持仓建议" value={holdingAdvice?.label || selected.trendText} />
+                      <ActionLine label="入选解释" value={selected.modeReason} />
+                      <ActionLine label="资讯/行业" value={`${selected.intelLabel} · ${selected.pickReason}`} />
                     </div>
                   </div>
 
@@ -464,7 +535,7 @@ export default function Dashboard() {
         <div className="px-3 py-2 border-b border-t-border flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2"><LineChart className="w-4 h-4 text-t-blue" /> 股票池作战台</h2>
           <div className="flex flex-wrap gap-1">
-            <span className="px-2 py-0.5 rounded text-xs text-t-textDim border border-t-border">{deskSource === 'auto' ? '自动更新' : '核心池'}</span>
+            <span className="px-2 py-0.5 rounded text-xs text-t-textDim border border-t-border">{deskSource === 'auto' ? `${deskModeMeta[deskMode].label}自动更新` : '核心池'}</span>
             {(['全部', ...laneOrder] as Array<DeskLane | '全部'>).map(lane => (
               <button key={lane} onClick={() => setActiveLane(lane)} className={`px-2 py-0.5 rounded text-xs ${activeLane === lane ? 'bg-t-blue text-white' : 'text-t-textDim hover:text-t-text'}`}>{lane}</button>
             ))}
@@ -480,6 +551,7 @@ export default function Dashboard() {
                 <th className="text-right py-2 font-medium">涨跌幅</th>
                 <th className="text-right py-2 font-medium">策略分</th>
                 <th className="text-right py-2 font-medium">止损距</th>
+                <th className="text-left py-2 font-medium">入选解释</th>
                 <th className="text-left py-2 font-medium">今日动作</th>
                 <th className="text-right py-2 pr-3 font-medium">入口</th>
               </tr>
@@ -496,6 +568,10 @@ export default function Dashboard() {
                   <td className={`py-2 text-right data-num ${stock.changePct >= 0 ? 'text-t-red' : 'text-t-green'}`}>{formatPct(stock.changePct)}</td>
                   <td className={`py-2 text-right data-num ${stock.score >= 15 ? 'text-t-red' : stock.score <= -15 ? 'text-t-green' : 'text-t-yellow'}`}>{stock.score}</td>
                   <td className="py-2 text-right data-num text-t-textDim">{stock.riskDistance.toFixed(1)}%</td>
+                  <td className="py-2 text-t-textSecondary">
+                    <div className="truncate max-w-[260px]">{stock.modeReason}</div>
+                    <div className="text-[10px] text-t-textDim truncate max-w-[260px]">{stock.intelLabel} · {stock.pickReason}</div>
+                  </td>
                   <td className="py-2 text-t-textSecondary">{stock.action}</td>
                   <td className="py-2 pr-3 text-right"><Link onClick={event => event.stopPropagation()} to={`/analysis?code=${stock.code}`} className="text-t-blue hover:underline">分析</Link></td>
                 </tr>
@@ -543,14 +619,15 @@ function CommandMetric({ icon: Icon, label, value, tone, detail }: { icon: typeo
   );
 }
 
-function MarketRadarPanel({ report }: { report: ReturnType<typeof buildMarketScanner> }) {
+function MarketRadarPanel({ report, deskMode }: { report: ReturnType<typeof buildMarketScanner>; deskMode: DeskMode }) {
+  const mode = deskModeMeta[deskMode];
   return (
     <section className="panel overflow-hidden">
       <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-t-border">
         <CommandMetric icon={Radar} label="全市场热度" value={`${report.heat}%`} tone={report.heat >= 65 ? 'text-t-red' : report.heat <= 35 ? 'text-t-green' : 'text-t-yellow'} detail={`${report.rising}/${report.total} 上涨`} />
         <CommandMetric icon={Activity} label="强弱对比" value={`${report.strongCount}/${report.weakCount}`} tone={report.strongCount >= report.weakCount ? 'text-t-red' : 'text-t-green'} detail="涨超5% / 跌超5%" />
         <CommandMetric icon={Target} label="策略机会" value={`${report.strategyCounts.龙头突破 + report.strategyCounts.共振低吸 + report.strategyCounts.量价突破 + report.strategyCounts.趋势回踩}`} tone="text-t-blue" detail="非观察候选数量" />
-        <CommandMetric icon={ShieldCheck} label="高风险候选" value={`${report.highRiskCount}`} tone={report.highRiskCount > report.total * 0.5 ? 'text-t-yellow' : 'text-t-green'} detail="仓位需要压缩" />
+        <CommandMetric icon={ShieldCheck} label="当前节奏" value={mode.label} tone="text-t-yellow" detail={mode.hint} />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_0.9fr] gap-0">
         <div className="p-3 border-r border-t-border">
