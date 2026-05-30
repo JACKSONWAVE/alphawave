@@ -14,6 +14,7 @@ import { analyzeDaily, calcIndicatorScore, calcSupportResistance } from './analy
 import { getAppSettings } from './appSettings';
 import { formatPrice } from './price';
 import type { RealtimeQuote } from './realtimeApi';
+import { getETFProfile } from './etfUniverse';
 
 export type StrategyBias = 'bullish' | 'neutral' | 'bearish';
 export type StrategyAction = 'buy_zone' | 'hold' | 'wait_pullback' | 'watch_breakout' | 'reduce' | 'exit';
@@ -227,6 +228,7 @@ function positionByRisk(action: StrategyAction, confidence: number, rr: number, 
 
 export function buildStrategyPlanFromData(code: string, name: string, rawData: KlineData[], quote?: RealtimeQuote): StrategyPlan {
   const settings = getAppSettings();
+  const etfProfile = getETFProfile(code);
   const maxPositionPct = parseFloat(settings.riskAlert) || 10;
   const data = (rawData.length ? rawData : getKlineData(code, 250)).slice(-250);
   const current = quote?.price || data[data.length - 1].close;
@@ -323,6 +325,10 @@ export function buildStrategyPlanFromData(code: string, name: string, rawData: K
   ];
 
   const reasons = [
+    ...(etfProfile ? [
+      `${etfProfile.name} 属于${etfProfile.role}，主题为 ${etfProfile.theme}`,
+      etfProfile.strategyNote,
+    ] : []),
     `综合评分 ${score.overall}/100，信号为 ${score.signal}`,
     `20日动量 ${pct(m20)}%，60日动量 ${pct(m60)}%`,
     `MA20 ${formatPrice(ma20)}，MA60 ${formatPrice(ma60)}，趋势强度 ${Math.round(trend.strength * 100)}%`,
@@ -330,6 +336,10 @@ export function buildStrategyPlanFromData(code: string, name: string, rawData: K
   ];
 
   const risks = [
+    ...(etfProfile ? [
+      `ETF主要风险来自跟踪指数/商品本身，不能按单只股票公告逻辑处理`,
+      etfProfile.risk === 'high' ? '主题ETF波动较大，单次配置仓位应低于宽基和红利低波' : etfProfile.expenseNote,
+    ] : []),
     `止损到当前价距离 ${pct(riskPct)}%，超过计划仓位会放大回撤`,
     volRatio > 2 ? '近期放量较大，若放量滞涨要防止冲高回落' : '量能未明显放大，突破需要成交量确认',
     current > sr.weakResistance ? '现价靠近压力区，追高的盈亏比会变差' : '未突破前仍可能在支撑压力间震荡',
@@ -338,7 +348,9 @@ export function buildStrategyPlanFromData(code: string, name: string, rawData: K
 
   const backtest = buildBacktest(workingData);
   const positionSize = positionByRisk(action, confidence, rr, daily.riskLevel, maxPositionPct);
-  const summary = `${actionText(action)}；盈亏比 ${pct(rr)}，置信度 ${confidence}%，仓位建议 ${positionSize}`;
+  const summary = etfProfile
+    ? `${etfProfile.role}：${actionText(action)}；${etfProfile.strategyNote} 仓位建议 ${positionSize}`
+    : `${actionText(action)}；盈亏比 ${pct(rr)}，置信度 ${confidence}%，仓位建议 ${positionSize}`;
 
   return {
     code,

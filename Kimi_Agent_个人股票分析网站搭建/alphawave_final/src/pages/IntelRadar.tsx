@@ -95,6 +95,10 @@ const fallbackWatchlist = [
   '002230.SZ',
   '601012.SH',
   '300059.SZ',
+  '510300.SH',
+  '512890.SH',
+  '518880.SH',
+  '512760.SH',
 ];
 
 function readWatchCodes() {

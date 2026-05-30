@@ -10,8 +10,10 @@ import {
   type StockListItem,
 } from './mockData';
 import { formatPct, formatPrice } from './price';
+import { getETFProfile, isETF } from './etfUniverse';
+import { etfProfiles } from './etfUniverse';
 
-export type StrategyTag = '龙头突破' | '共振低吸' | '量价突破' | '趋势回踩' | '观察';
+export type StrategyTag = '龙头突破' | '共振低吸' | '量价突破' | '趋势回踩' | 'ETF配置' | '观察';
 
 export interface DailyStrategyPick {
   code: string;
@@ -164,7 +166,68 @@ function calcUniverseSignal(stock: StockListItem) {
   };
 }
 
+function calcETFSignal(stock: StockListItem, kline: KlineData[]) {
+  const profile = getETFProfile(stock.code);
+  const latest = kline.length ? last(kline)! : null;
+  const price = latest?.close || stock.price;
+  const ma20 = kline.length ? calcMA(kline, 20) : [];
+  const ma60 = kline.length ? calcMA(kline, 60) : [];
+  const macd = kline.length ? calcMACD(kline) : null;
+  const rsi = kline.length ? calcRSI(kline) : [];
+  const i = kline.length - 1;
+  const above20 = Boolean(ma20[i] && price >= ma20[i]! * 0.985);
+  const above60 = Boolean(ma60[i] && price >= ma60[i]! * 0.98);
+  const macdBull = Boolean(macd && macd.dif[i] > macd.dea[i]);
+  const rsiValue = rsi[i] || 50;
+  const range = rangePosition(stock);
+  const defensive = profile?.role === '防守现金流' || profile?.role === '商品避险';
+
+  let score = defensive ? 24 : 18;
+  const evidence = [profile?.role || 'ETF资产配置'];
+
+  if (above20) {
+    score += 14;
+    evidence.push('站稳20日配置线');
+  }
+  if (above60) {
+    score += 12;
+    evidence.push('中期趋势未破');
+  }
+  if (macdBull) {
+    score += 10;
+    evidence.push('MACD处于多头侧');
+  }
+  if (rsiValue >= 42 && rsiValue <= 68) {
+    score += 8;
+    evidence.push(`RSI ${rsiValue.toFixed(1)} 未过热`);
+  }
+  if (stock.changePct > 0) score += Math.min(12, stock.changePct * (defensive ? 2 : 1.6));
+  if (range < 0.82) {
+    score += 8;
+    evidence.push(`52周位置 ${(range * 100).toFixed(0)}%，尚未极端拥挤`);
+  } else {
+    evidence.push('接近52周高位，避免追价');
+  }
+
+  const riskBuffer = profile?.risk === 'low' ? 0.965 : profile?.risk === 'medium' ? 0.94 : 0.91;
+  const targetLift = profile?.risk === 'low' ? 1.055 : profile?.risk === 'medium' ? 1.085 : 1.13;
+  const entryLow = Math.min(price * 0.985, (ma20[i] || price) * 0.995);
+  const entryHigh = Math.max(price * 1.005, (ma20[i] || price) * 1.015);
+
+  return {
+    strategy: 'ETF配置' as StrategyTag,
+    score,
+    evidence: evidence.slice(0, 5),
+    entry: `${formatPrice(entryLow)}-${formatPrice(entryHigh)}`,
+    stop: formatPrice(Math.min(price * riskBuffer, (ma60[i] || price) * 0.985)),
+    target: formatPrice(Math.max(price * targetLift, stock.high52w || price * targetLift)),
+  };
+}
+
 function riskLevelOf(stock: StockListItem, score: number, hasDeepData: boolean): DailyStrategyPick['riskLevel'] {
+  const etf = getETFProfile(stock.code);
+  if (etf?.risk === 'low') return score >= 45 ? 'low' : 'medium';
+  if (etf?.risk === 'medium') return score >= 58 ? 'low' : 'medium';
   const pos = rangePosition(stock);
   if (stock.changePct >= 7.5 || pos >= 0.92 || score < 32) return 'high';
   if (!hasDeepData || stock.changePct >= 4.5 || pos >= 0.82 || score < 58) return 'medium';
@@ -172,6 +235,7 @@ function riskLevelOf(stock: StockListItem, score: number, hasDeepData: boolean):
 }
 
 function executionText(strategy: StrategyTag, riskLevel: DailyStrategyPick['riskLevel']) {
+  if (strategy === 'ETF配置') return riskLevel === 'high' ? '只做小仓观察，等回踩配置线' : '按资产配置分批，不用个股追涨打法';
   if (strategy === '龙头突破') return riskLevel === 'high' ? '只等放量回封/回踩确认' : '突破后分批跟随，失败立即撤';
   if (strategy === '共振低吸') return '只在计划买区低吸，不追高';
   if (strategy === '量价突破') return '看量能延续，缩量回落先观察';
@@ -181,13 +245,15 @@ function executionText(strategy: StrategyTag, riskLevel: DailyStrategyPick['risk
 
 export function scoreStrategyStock(stock: StockListItem): DailyStrategyPick {
   const kline = stock.hasKline ? getKlineData(stock.code) : [];
+  const etfSignal = isETF(stock.code) ? calcETFSignal(stock, getKlineData(stock.code, 250)) : null;
   const deep = stock.hasKline ? calcDeepSignal(stock, kline) : null;
   const fallback = calcUniverseSignal(stock);
-  const signal = deep && deep.score >= 28 ? deep : fallback;
-  const score = Math.round(signal.score + (stock.hasKline ? 10 : 0));
-  const confidence = Math.max(35, Math.min(92, score + (stock.hasKline ? 18 : 8)));
+  const signal = etfSignal || (deep && deep.score >= 28 ? deep : fallback);
+  const score = Math.round(signal.score + (stock.hasKline || etfSignal ? 10 : 0));
+  const confidence = Math.max(35, Math.min(92, score + (stock.hasKline || etfSignal ? 18 : 8)));
   const evidence = signal.evidence.slice(0, 4);
-  const riskLevel = riskLevelOf(stock, score, stock.hasKline);
+  const riskLevel = riskLevelOf(stock, score, stock.hasKline || Boolean(etfSignal));
+  const etfProfile = getETFProfile(stock.code);
 
   return {
     code: stock.code,
@@ -202,11 +268,13 @@ export function scoreStrategyStock(stock: StockListItem): DailyStrategyPick {
     stop: signal.stop,
     target: signal.target,
     evidence,
-    hasDeepData: stock.hasKline,
+    hasDeepData: stock.hasKline || Boolean(etfSignal),
     riskLevel,
     execution: executionText(signal.strategy, riskLevel),
     reason: evidence.length
       ? evidence.join('；')
+      : etfProfile
+        ? `${etfProfile.theme} ETF，${etfProfile.strategyNote}`
       : `涨跌幅 ${formatPct(stock.changePct)}，等待更多量价确认`,
   };
 }
@@ -217,5 +285,14 @@ export function buildDailyStrategyPicks(limit = 10): DailyStrategyPick[] {
     .map(scoreStrategyStock)
     .filter(item => item.strategy !== '观察' && item.score >= 32)
     .sort((a, b) => b.score - a.score || b.confidence - a.confidence)
+    .slice(0, limit);
+}
+
+export function buildETFStrategyPicks(limit = 8): DailyStrategyPick[] {
+  const etfCodes = new Set(etfProfiles.map(item => item.code));
+  return getStockList()
+    .filter(stock => etfCodes.has(stock.code))
+    .map(scoreStrategyStock)
+    .sort((a, b) => b.confidence - a.confidence || b.score - a.score)
     .slice(0, limit);
 }

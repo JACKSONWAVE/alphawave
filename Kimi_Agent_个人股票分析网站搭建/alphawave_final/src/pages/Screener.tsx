@@ -24,16 +24,19 @@ export default function Screener() {
   const [sortBy, setSortBy] = useState<SortKey>('strategyScore');
 
   const industries = useMemo(() => ['全部', ...Array.from(new Set(stockList.map(s => s.industry)))], [stockList]);
-  const strategies: StrategyFilter[] = ['全部策略', '龙头突破', '共振低吸', '量价突破', '趋势回踩'];
+  const strategies: StrategyFilter[] = ['全部策略', '龙头突破', '共振低吸', '量价突破', '趋势回踩', 'ETF配置'];
 
   const filtered = useMemo(() => {
     let res = [...scoredStocks];
-    const keyword = query.trim().toLowerCase();
-    if (keyword) {
+    const keywords = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (keywords.length) {
       res = res.filter(s =>
-        s.code.toLowerCase().includes(keyword) ||
-        s.name.toLowerCase().includes(keyword) ||
-        s.industry.toLowerCase().includes(keyword)
+        keywords.some(keyword =>
+          s.code.toLowerCase().includes(keyword) ||
+          s.name.toLowerCase().includes(keyword) ||
+          s.industry.toLowerCase().includes(keyword) ||
+          s.strategyPick.reason.toLowerCase().includes(keyword)
+        )
       );
     }
     if (minPrice) res = res.filter(s => s.price >= parseFloat(minPrice));
@@ -65,6 +68,9 @@ export default function Screener() {
 
   const quickFilters = [
     { label: '龙头突破', fn: () => { setStrategy('龙头突破'); setMinChange('2'); setMaxChange('9.9'); setSortBy('strategyScore'); } },
+    { label: 'ETF配置', fn: () => { setQuery('ETF'); setStrategy('ETF配置'); setIndustry('全部'); setMinPe(''); setMaxPe(''); setSortBy('confidence'); } },
+    { label: '红利/黄金', fn: () => { setQuery('红利 黄金'); setStrategy('全部策略'); setIndustry('全部'); setMinPe(''); setMaxPe(''); setSortBy('confidence'); } },
+    { label: '芯片存储', fn: () => { setQuery('芯片 半导体 存储'); setStrategy('全部策略'); setIndustry('全部'); setMinPe(''); setMaxPe(''); setSortBy('strategyScore'); } },
     { label: '共振低吸', fn: () => { setStrategy('共振低吸'); setMinChange('-2'); setMaxChange('4'); setSortBy('confidence'); } },
     { label: '涨停潜力', fn: () => { setMinChange('5'); setMaxChange('9.9'); setSortBy('changePct'); } },
     { label: '超跌反弹', fn: () => { setMinChange('-5'); setMaxChange('0'); setStrategy('全部策略'); } },

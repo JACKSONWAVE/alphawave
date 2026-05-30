@@ -1,6 +1,7 @@
 // 数据层：优先真实数据，fallback到mock
 import { stockData } from '../assets/data/stockData';
 import { stockUniverse } from '../assets/data/stockUniverse';
+import { getETFRecords } from './etfUniverse';
 
 export interface KlineData {
   date: string; open: number; high: number; low: number; close: number;
@@ -20,11 +21,12 @@ export interface StockListItem {
 
 const localStocks = stockData.stocks || {};
 const universeStocks = stockUniverse.stocks || {};
+const etfStocks = getETFRecords();
 let stockListCache: StockListItem[] | null = null;
 let coreStockListCache: StockListItem[] | null = null;
 
 function getStockRecord(code: string) {
-  return localStocks[code] || universeStocks[code];
+  return localStocks[code] || universeStocks[code] || etfStocks[code];
 }
 
 // ── 获取K线数据 ──
@@ -65,7 +67,7 @@ export function getStockInfo(code: string): StockInfo & { high52w: number; low52
   return { code, name: s.name, industry: s.industry, price: l.price || 0, change: l.change || 0, changePct: l.changePct || 0, volume: l.volume || 0, open: l.open || 0, high: l.high || 0, low: l.low || 0, high52w: s.high52w || 0, low52w: s.low52w || 0 };
 }
 
-export function getAllCodes(): string[] { return Array.from(new Set([...Object.keys(universeStocks), ...Object.keys(localStocks)])); }
+export function getAllCodes(): string[] { return Array.from(new Set([...Object.keys(universeStocks), ...Object.keys(localStocks), ...Object.keys(etfStocks)])); }
 
 export function getCoreCodes(): string[] { return Object.keys(localStocks); }
 

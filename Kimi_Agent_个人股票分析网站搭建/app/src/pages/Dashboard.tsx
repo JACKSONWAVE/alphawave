@@ -24,7 +24,7 @@ import { buildMarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
 import { buildHoldingAdvice, buildHoldingPositions, buildTradeGuard, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
-import { buildDailyStrategyPicks } from '../data/strategyScreener';
+import { buildDailyStrategyPicks, buildETFStrategyPicks, type DailyStrategyPick } from '../data/strategyScreener';
 import { buildMarketScanner, type IndustryHeat } from '../data/marketScanner';
 import { buildDataFreshness, buildRequirementAudit, type SystemAuditItem } from '../data/systemAudit';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
@@ -158,6 +158,7 @@ export default function Dashboard() {
     ? buildHoldingAdvice({ position: selectedPosition, currentPrice: selected.price, plan: selectedPlan, scoreOverall: selected.score, marketHeat })
     : null;
   const dailyPicks = useMemo(() => buildDailyStrategyPicks(10), [realtimeQuotes]);
+  const etfPicks = useMemo(() => buildETFStrategyPicks(8), []);
   const marketScanner = useMemo(() => buildMarketScanner(), []);
   const auditItems = useMemo(() => buildRequirementAudit(), []);
   const freshness = useMemo(() => buildDataFreshness(), []);
@@ -216,6 +217,21 @@ export default function Dashboard() {
               </div>
             </Link>
           ))}
+        </div>
+      </section>
+
+      <section className="panel overflow-hidden">
+        <div className="px-4 py-3 border-b border-t-border bg-[#131722] flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-t-yellow" /> ETF 配置池
+            </h2>
+            <p className="text-[11px] text-t-textDim mt-1">把宽基、红利低波、黄金、芯片/存储链和行业 ETF 单独做资产配置，不和个股共用一套追涨逻辑。</p>
+          </div>
+          <Link to="/screener" className="text-xs text-t-blue hover:underline">进入智能选股器筛 ETF</Link>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-0">
+          {etfPicks.map(pick => <ETFPickCard key={pick.code} pick={pick} />)}
         </div>
       </section>
 
@@ -456,6 +472,31 @@ export default function Dashboard() {
         </div>
       </section>
     </div>
+  );
+}
+
+function ETFPickCard({ pick }: { pick: DailyStrategyPick }) {
+  return (
+    <Link to={`/analysis?code=${pick.code}`} className="p-3 min-h-[154px] border-r border-b border-t-border hover:bg-white/[0.035] transition-colors">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] data-num text-t-textDim">{pick.code}</div>
+          <div className="text-sm font-semibold text-t-textBright truncate">{pick.name}</div>
+          <div className="text-[11px] text-t-textDim mt-0.5">{pick.industry}</div>
+        </div>
+        <span className={`text-lg font-bold data-num ${pick.riskLevel === 'high' ? 'text-t-yellow' : pick.riskLevel === 'low' ? 'text-t-green' : 'text-t-blue'}`}>{pick.confidence}</span>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+        <span className="px-1.5 py-0.5 rounded bg-t-yellow/10 text-t-yellow border border-t-yellow/20">{pick.strategy}</span>
+        <span className={pick.changePct >= 0 ? 'text-t-red data-num' : 'text-t-green data-num'}>{formatPct(pick.changePct)}</span>
+      </div>
+      <div className="mt-2 space-y-1 text-[11px] text-t-textDim">
+        <div className="truncate">{pick.reason}</div>
+        <div className="truncate">配置区 {pick.entry}</div>
+        <div className="truncate">止损 {pick.stop} · 目标 {pick.target}</div>
+        <div className="text-t-textSecondary line-clamp-2">{pick.execution}</div>
+      </div>
+    </Link>
   );
 }
 
