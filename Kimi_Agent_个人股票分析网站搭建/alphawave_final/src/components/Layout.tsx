@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BarChart3, Star, Receipt, Bell, Settings, Search, Filter, Bot } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Star, Receipt, Bell, Settings, Search, Filter, Bot, Newspaper } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { getMarketIndex, getStockList } from '../data/mockData';
@@ -9,6 +9,7 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: '行情看板' },
   { to: '/analysis', icon: BarChart3, label: '技术分析' },
   { to: '/watchlist', icon: Star, label: '自选股' },
+  { to: '/intel', icon: Newspaper, label: '资讯雷达' },
   { to: '/screener', icon: Filter, label: '智能选股' },
   { to: '/trades', icon: Receipt, label: '交易记录' },
 ];

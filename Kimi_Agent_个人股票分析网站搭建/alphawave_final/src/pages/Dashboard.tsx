@@ -403,7 +403,10 @@ export default function Dashboard() {
             <div className="space-y-2 text-xs text-t-textSecondary">
               <p>关注池出现重大资讯时，优先推送：事件性质、影响方向、对应仓位动作。</p>
               <p>盘中重点盯：放量突破、跌破止损、行业异动、大盘成交额过热。</p>
-              <Link to="/feishu" className="inline-flex items-center gap-1 text-t-blue hover:underline">检查飞书推送 <ArrowUpRight className="w-3 h-3" /></Link>
+              <div className="flex flex-wrap gap-3">
+                <Link to="/intel" className="inline-flex items-center gap-1 text-t-blue hover:underline">打开资讯雷达 <ArrowUpRight className="w-3 h-3" /></Link>
+                <Link to="/feishu" className="inline-flex items-center gap-1 text-t-blue hover:underline">检查飞书推送 <ArrowUpRight className="w-3 h-3" /></Link>
+              </div>
             </div>
           </div>
         </div>

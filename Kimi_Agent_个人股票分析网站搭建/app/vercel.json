@@ -15,6 +15,7 @@
     { "source": "/watchlist", "destination": "/index.html" },
     { "source": "/screener", "destination": "/index.html" },
     { "source": "/trades", "destination": "/index.html" },
+    { "source": "/intel", "destination": "/index.html" },
     { "source": "/feishu", "destination": "/index.html" },
     { "source": "/alerts", "destination": "/index.html" },
     { "source": "/settings", "destination": "/index.html" }
