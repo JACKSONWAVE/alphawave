@@ -28,16 +28,20 @@ export default async function handler(request: any, response: any) {
   }
 
   const webhook = process.env.FEISHU_WEBHOOK;
-  if (!webhook) {
-    return response.status(500).json({ ok: false, error: 'missing FEISHU_WEBHOOK' });
-  }
-
   const watchList = parseWatchList(request);
   const feedUrls = parseList(request.query?.feeds || process.env.NEWS_FEED_URLS);
   const message = await generateIntelReport(watchList, feedUrls);
 
   if (!message) {
     return response.status(200).json({ ok: true, skipped: true, reason: 'no important news' });
+  }
+
+  if (request.query?.dryRun === '1') {
+    return response.status(200).json({ ok: true, dryRun: true, watchList, message });
+  }
+
+  if (!webhook) {
+    return response.status(500).json({ ok: false, error: 'missing FEISHU_WEBHOOK' });
   }
 
   const sent = await sendToFeishu(webhook, message);
