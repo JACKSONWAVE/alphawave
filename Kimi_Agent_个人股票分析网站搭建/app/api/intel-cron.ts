@@ -23,27 +23,32 @@ function isAuthorized(request: any): boolean {
 }
 
 export default async function handler(request: any, response: any) {
-  if (!isAuthorized(request)) {
-    return response.status(401).json({ ok: false, error: 'unauthorized' });
+  try {
+    if (!isAuthorized(request)) {
+      return response.status(401).json({ ok: false, error: 'unauthorized' });
+    }
+
+    const webhook = process.env.FEISHU_WEBHOOK;
+    const watchList = parseWatchList(request);
+    const feedUrls = parseList(request.query?.feeds || process.env.NEWS_FEED_URLS);
+    const message = await generateIntelReport(watchList, feedUrls);
+
+    if (!message) {
+      return response.status(200).json({ ok: true, skipped: true, reason: 'no important news' });
+    }
+
+    if (request.query?.dryRun === '1') {
+      return response.status(200).json({ ok: true, dryRun: true, watchList, message });
+    }
+
+    if (!webhook) {
+      return response.status(500).json({ ok: false, error: 'missing FEISHU_WEBHOOK' });
+    }
+
+    const sent = await sendToFeishu(webhook, message);
+    return response.status(sent ? 200 : 502).json({ ok: sent, sent, watchList });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'unknown error';
+    return response.status(500).json({ ok: false, error: detail });
   }
-
-  const webhook = process.env.FEISHU_WEBHOOK;
-  const watchList = parseWatchList(request);
-  const feedUrls = parseList(request.query?.feeds || process.env.NEWS_FEED_URLS);
-  const message = await generateIntelReport(watchList, feedUrls);
-
-  if (!message) {
-    return response.status(200).json({ ok: true, skipped: true, reason: 'no important news' });
-  }
-
-  if (request.query?.dryRun === '1') {
-    return response.status(200).json({ ok: true, dryRun: true, watchList, message });
-  }
-
-  if (!webhook) {
-    return response.status(500).json({ ok: false, error: 'missing FEISHU_WEBHOOK' });
-  }
-
-  const sent = await sendToFeishu(webhook, message);
-  return response.status(sent ? 200 : 502).json({ ok: sent, sent, watchList });
 }
