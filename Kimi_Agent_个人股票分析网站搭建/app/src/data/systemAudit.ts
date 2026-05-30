@@ -82,7 +82,7 @@ export function buildRequirementAudit(): SystemAuditItem[] {
   return [
     { id: 1, title: '买卖三角信号开关', status: 'done', detail: '技术分析页已支持手动显示/隐藏，并保存到本地偏好。' },
     { id: 2, title: '指标线段缺口说明', status: 'done', detail: '副图使用 connectNulls，主图均线前 N 日仍会自然缺失，属于指标样本不足。' },
-    { id: 3, title: '重大资讯飞书推送', status: 'partial', detail: '已接入资讯雷达 API、关键词分级和飞书推送；稳定新闻源需要在 Vercel 配置 NEWS_FEED_URLS。' },
+    { id: 3, title: '重大资讯飞书推送', status: 'partial', detail: '已接入结构化资讯雷达、关键词分级、交易姿态、飞书推送；稳定新闻源需要在 Vercel 配置 NEWS_FEED_URLS。' },
     { id: 4, title: '行业趋势监控', status: 'done', detail: '大盘与行业雷达已纳入行业强弱、风险预算和信号降级逻辑。' },
     { id: 5, title: '中期稳健交易习惯', status: 'done', detail: '策略闸门区分底仓、波段仓和激进追高小仓试错。' },
     { id: 6, title: '10 年历史数据', status: 'partial', detail: '已提供 10 年回填脚本并补齐核心股票；新增股票需要跑 data:backfill 自动写入。' },

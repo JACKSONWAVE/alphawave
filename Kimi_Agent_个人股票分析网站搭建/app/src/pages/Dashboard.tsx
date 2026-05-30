@@ -395,16 +395,16 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="panel p-3">
+          <div className="panel p-3 border border-t-yellow/25 bg-t-yellow/5">
             <div className="flex items-center gap-2 mb-2">
-              <BellRing className="w-4 h-4 text-t-blue" />
-              <h2 className="text-sm font-semibold text-t-textBright">资讯/预警待办</h2>
+              <BellRing className="w-4 h-4 text-t-yellow" />
+              <h2 className="text-sm font-semibold text-t-textBright">资讯雷达工作台</h2>
             </div>
             <div className="space-y-2 text-xs text-t-textSecondary">
-              <p>关注池出现重大资讯时，优先推送：事件性质、影响方向、对应仓位动作。</p>
-              <p>盘中重点盯：放量突破、跌破止损、行业异动、大盘成交额过热。</p>
+              <p>重大资讯会被整理成交易姿态、主题热度、自选股影响矩阵和行动队列。</p>
+              <p>盘中重点盯：宏观冲击、行业突发、个股利空、放量突破和跌破止损。</p>
               <div className="flex flex-wrap gap-3">
-                <Link to="/intel" className="inline-flex items-center gap-1 text-t-blue hover:underline">打开资讯雷达 <ArrowUpRight className="w-3 h-3" /></Link>
+                <Link to="/intel" className="inline-flex items-center gap-1 text-t-yellow hover:underline">打开工作台 <ArrowUpRight className="w-3 h-3" /></Link>
                 <Link to="/feishu" className="inline-flex items-center gap-1 text-t-blue hover:underline">检查飞书推送 <ArrowUpRight className="w-3 h-3" /></Link>
               </div>
             </div>

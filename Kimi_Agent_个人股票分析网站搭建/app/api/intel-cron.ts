@@ -17,6 +17,25 @@ interface IntelHit extends NewsItem {
   action: string;
 }
 
+interface IntelTheme {
+  keyword: string;
+  count: number;
+  score: number;
+  impact: IntelHit['impact'];
+}
+
+interface IntelPayload {
+  generatedAt: string;
+  scanCount: number;
+  watchCount: number;
+  marketHits: IntelHit[];
+  stockHits: IntelHit[];
+  topThemes: IntelTheme[];
+  stance: '进攻' | '均衡' | '防守';
+  riskBudget: string;
+  brief: string;
+}
+
 const stockNames: Record<string, string> = {
   '603019.SH': '中科曙光',
   '002594.SZ': '比亚迪',
@@ -151,6 +170,65 @@ function uniqueItems(items: NewsItem[]) {
   });
 }
 
+function uniqueHits(hits: IntelHit[]) {
+  const seen = new Set<string>();
+  return hits.filter(hit => {
+    const key = `${hit.code}:${hit.title.replace(/\s+/g, '').slice(0, 90)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildTopThemes(hits: IntelHit[]): IntelTheme[] {
+  const map = new Map<string, { count: number; score: number; positive: number; negative: number }>();
+  hits.forEach(hit => {
+    hit.matched.forEach(keyword => {
+      const row = map.get(keyword) || { count: 0, score: 0, positive: 0, negative: 0 };
+      row.count += 1;
+      row.score += hit.score;
+      if (hit.impact === '利好') row.positive += hit.score;
+      if (hit.impact === '利空') row.negative += hit.score;
+      map.set(keyword, row);
+    });
+  });
+  return Array.from(map.entries())
+    .map(([keyword, row]) => ({
+      keyword,
+      count: row.count,
+      score: row.score,
+      impact: row.negative > row.positive ? '利空' : row.positive > row.negative ? '利好' : '中性',
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+}
+
+function buildStance(hits: IntelHit[]): Pick<IntelPayload, 'stance' | 'riskBudget' | 'brief'> {
+  const marketHits = hits.filter(hit => hit.scope === '宏观');
+  const riskScore = hits.filter(hit => hit.impact === '利空').reduce((sum, hit) => sum + hit.score, 0);
+  const positiveScore = hits.filter(hit => hit.impact === '利好').reduce((sum, hit) => sum + hit.score, 0);
+  const stockRisk = hits.some(hit => hit.scope !== '宏观' && hit.impact === '利空' && hit.score >= 45);
+  if (riskScore > positiveScore + 50 || stockRisk) {
+    return {
+      stance: '防守',
+      riskBudget: '总仓位压低，个股只处理已有计划，不追高新开。',
+      brief: '利空或个股风险占优，先保护利润和止损线，等价格确认后再恢复进攻。',
+    };
+  }
+  if (positiveScore > riskScore + 45 && marketHits.some(hit => hit.impact === '利好')) {
+    return {
+      stance: '进攻',
+      riskBudget: '可提高候选优先级，但单票仍按计划买区、突破确认和止损执行。',
+      brief: '宏观或行业偏暖，适合把强势主题放到观察前排，等量价确认后行动。',
+    };
+  }
+  return {
+    stance: '均衡',
+    riskBudget: '维持标准仓位，优先执行高置信度信号，弱信号不加仓。',
+    brief: '多空信息交织，今天更适合按交易闸门和技术共振筛选，不靠新闻单独下单。',
+  };
+}
+
 async function fetchFeed(url: string): Promise<NewsItem[]> {
   try {
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 AlphaWave' } });
@@ -193,18 +271,34 @@ async function fetchFeed(url: string): Promise<NewsItem[]> {
 async function generateIntelReport(watchList: string[], feedUrls: string[]) {
   const urls = feedUrls.length > 0 ? feedUrls : defaultFeedUrls();
   const items = uniqueItems((await Promise.all(urls.map(fetchFeed))).flat()).slice(0, 160);
-  const hits = [
+  const hits = uniqueHits([
     ...items.map(scoreMarket).filter((item): item is IntelHit => Boolean(item)),
     ...watchList.flatMap(code => items.map(item => scoreStock(item, code)).filter((hit): hit is IntelHit => Boolean(hit))),
-  ].sort((a, b) => b.score - a.score);
+  ]).sort((a, b) => b.score - a.score);
 
   if (hits.length === 0) return null;
 
   const time = new Date().toLocaleString('zh-CN');
+  const marketHits = hits.filter(hit => hit.scope === '宏观').slice(0, 5);
+  const stockHits = hits.filter(hit => hit.scope !== '宏观').slice(0, 12);
+  const stance = buildStance(hits);
+  const payload: IntelPayload = {
+    generatedAt: time,
+    scanCount: items.length,
+    watchCount: watchList.length,
+    marketHits,
+    stockHits,
+    topThemes: buildTopThemes(hits),
+    ...stance,
+  };
+
   let md = `## AlphaWave 重大资讯雷达 ${time}\n\n`;
   md += `> 已扫描 ${items.length} 条国内/国际财经资讯，重点映射 ${watchList.length} 只自选股。\n\n`;
+  md += `### 交易台结论\n\n`;
+  md += `- 当前姿态：${payload.stance}\n`;
+  md += `- 风险预算：${payload.riskBudget}\n`;
+  md += `- 摘要：${payload.brief}\n\n`;
 
-  const marketHits = hits.filter(hit => hit.scope === '宏观').slice(0, 5);
   if (marketHits.length > 0) {
     md += `### 市场级事件\n\n`;
     for (const hit of marketHits) {
@@ -215,7 +309,6 @@ async function generateIntelReport(watchList: string[], feedUrls: string[]) {
     md += `\n`;
   }
 
-  const stockHits = hits.filter(hit => hit.scope !== '宏观').slice(0, 12);
   md += `### 自选股重点关注\n\n`;
   if (stockHits.length === 0) {
     md += `暂未发现与自选股直接相关的重大新闻。今天优先按价格触发、技术共振和风控闸门执行。\n\n`;
@@ -228,7 +321,7 @@ async function generateIntelReport(watchList: string[], feedUrls: string[]) {
       if (hit.url) md += `${hit.url}\n\n`;
     }
   }
-  return md;
+  return { message: md, payload };
 }
 
 async function sendToFeishu(webhook: string, message: string) {
@@ -256,13 +349,13 @@ export default async function handler(request: any, response: any) {
 
     const watchList = parseWatchList(request);
     const feedUrls = parseList(request.query?.feeds || process.env.NEWS_FEED_URLS);
-    const message = await generateIntelReport(watchList, feedUrls);
-    if (!message) return response.status(200).json({ ok: true, skipped: true, reason: 'no important news' });
-    if (request.query?.dryRun === '1') return response.status(200).json({ ok: true, dryRun: true, watchList, message });
+    const report = await generateIntelReport(watchList, feedUrls);
+    if (!report) return response.status(200).json({ ok: true, skipped: true, reason: 'no important news' });
+    if (request.query?.dryRun === '1') return response.status(200).json({ ok: true, dryRun: true, watchList, message: report.message, payload: report.payload });
 
     const webhook = process.env.FEISHU_WEBHOOK;
     if (!webhook) return response.status(500).json({ ok: false, error: 'missing FEISHU_WEBHOOK' });
-    const sent = await sendToFeishu(webhook, message);
+    const sent = await sendToFeishu(webhook, report.message);
     return response.status(sent ? 200 : 502).json({ ok: sent, sent, watchList });
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'unknown error';

@@ -199,8 +199,8 @@ export default function FeishuSettings() {
             <span className="w-6 h-6 rounded bg-t-red/15 text-t-red flex items-center justify-center flex-shrink-0 text-[10px]">讯</span>
             <div>
               <span className="text-t-text font-medium">重大资讯雷达</span>
-              <span className="text-t-textDim ml-2">交易日多次扫描</span>
-              <p className="text-t-textDim mt-0.5">国内/国际宏观、政策、产业、个股新闻，判断利好利空并重点映射自选股</p>
+              <span className="text-t-textDim ml-2">定时推送 + 页面手动扫描</span>
+              <p className="text-t-textDim mt-0.5">国内/国际宏观、政策、产业、个股新闻，输出交易姿态、风险预算和自选股影响矩阵</p>
             </div>
           </div>
           <div className="flex items-start gap-2">
