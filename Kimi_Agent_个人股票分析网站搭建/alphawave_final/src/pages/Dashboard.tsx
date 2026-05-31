@@ -12,11 +12,13 @@ import {
   Crosshair,
   Database,
   Gauge,
+  History,
   LineChart,
   Radar,
   RefreshCw,
   ShieldCheck,
   Target,
+  WalletCards,
 } from 'lucide-react';
 
 import { calcMA, getCoreStockList, getKlineData, getMarketIndex, getStockList, getTrend, type StockListItem, type TradeRecord } from '../data/mockData';
@@ -29,6 +31,8 @@ import { buildDailyStrategyPicks, buildETFStrategyPicks, scoreStrategyStock, typ
 import { buildMarketScanner, type IndustryHeat, type MarketScannerReport } from '../data/marketScanner';
 import { buildDataFreshness, buildRequirementAudit, type SystemAuditItem } from '../data/systemAudit';
 import { buildPortfolioWorkbench } from '../data/portfolioEngine';
+import { buildAccountSummary, type AccountSummary } from '../data/accountEngine';
+import { buildStrategySnapshot, diffStrategySnapshots, type StrategyPoolLog, type StrategyPoolSnapshotItem } from '../data/strategyJournal';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import RealtimeStatus from '../components/RealtimeStatus';
@@ -182,16 +186,27 @@ export default function Dashboard() {
   const staticStocks = useMemo(() => getCoreStockList(), []);
   const { quotes: realtimeQuotes, loading, refresh } = useRealtimeQuotes({});
   const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
+  const [initialCapital, setInitialCapital] = useLocalStorage<number>('account_initial_capital', 1000000);
+  const [poolSnapshot, setPoolSnapshot] = useLocalStorage<StrategyPoolSnapshotItem[]>('strategy_pool_snapshot', []);
+  const [poolLogs, setPoolLogs] = useLocalStorage<StrategyPoolLog[]>('strategy_pool_logs', []);
   const [activeLane, setActiveLane] = useState<DeskLane | '全部'>('全部');
   const [deskSource, setDeskSource] = useLocalStorage<DeskSource>('dashboard_desk_source', 'auto');
   const [deskMode, setDeskMode] = useLocalStorage<DeskMode>('dashboard_desk_mode', 'intraday');
   const [selectedCode, setSelectedCode] = useState(staticStocks[0]?.code || '603019.SH');
 
   const holdings = useMemo(() => buildHoldingPositions(trades), [trades]);
+  const accountSummary = useMemo(() => buildAccountSummary(trades, initialCapital, realtimeQuotes), [initialCapital, realtimeQuotes, trades]);
   const portfolioWorkbench = useMemo(() => buildPortfolioWorkbench(trades), [trades]);
   const dailyPicks = useMemo(() => buildDailyStrategyPicks(16), [realtimeQuotes]);
   const etfPicks = useMemo(() => buildETFStrategyPicks(8), []);
   const marketScanner = useMemo(() => buildMarketScanner(), []);
+  const currentPoolSnapshot = useMemo(() => buildStrategySnapshot(
+    dailyPicks,
+    pick => {
+      const stock = allStocks.find(item => item.code === pick.code);
+      return stock ? calcIndustryIntel(stock, marketScanner).label : '资讯0';
+    },
+  ), [allStocks, dailyPicks, marketScanner]);
   const pickMap = useMemo(() => new Map([...dailyPicks, ...etfPicks].map(pick => [pick.code, pick])), [dailyPicks, etfPicks]);
   const deskUniverse = useMemo(() => {
     if (deskSource === 'core') return staticStocks;
@@ -253,13 +268,30 @@ export default function Dashboard() {
     }
   }, [deskStocks, selectedCode]);
 
+  useEffect(() => {
+    if (!currentPoolSnapshot.length) return;
+    const previousKey = poolSnapshot.map(item => `${item.code}:${item.rank}:${item.score}:${item.confidence}:${item.riskLevel}:${item.intelLabel}`).join('|');
+    const currentKey = currentPoolSnapshot.map(item => `${item.code}:${item.rank}:${item.score}:${item.confidence}:${item.riskLevel}:${item.intelLabel}`).join('|');
+    if (previousKey === currentKey) return;
+
+    const logs = diffStrategySnapshots(poolSnapshot, currentPoolSnapshot);
+    if (logs.length) {
+      setPoolLogs(previous => [...logs, ...previous].slice(0, 40));
+    }
+    setPoolSnapshot(currentPoolSnapshot);
+  }, [currentPoolSnapshot, poolSnapshot, setPoolLogs, setPoolSnapshot]);
+
   return (
     <div className="space-y-3">
       <RealtimeStatus />
 
       <MarketRadarPanel report={marketScanner} deskMode={deskMode} />
 
+      <AccountOverviewPanel summary={accountSummary} initialCapital={initialCapital} onCapitalChange={setInitialCapital} />
+
       <PortfolioCommandPanel workbench={portfolioWorkbench} />
+
+      <StrategyJournalPanel logs={poolLogs} current={currentPoolSnapshot} />
 
       <section className="panel overflow-hidden">
         <div className="px-4 py-3 border-b border-t-border bg-[#131722] flex flex-wrap items-center justify-between gap-3">
@@ -581,6 +613,195 @@ export default function Dashboard() {
         </div>
       </section>
     </div>
+  );
+}
+
+function formatMoney(value: number) {
+  const sign = value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  if (abs >= 100000000) return `${sign}${(abs / 100000000).toFixed(2)}亿`;
+  if (abs >= 10000) return `${sign}${(abs / 10000).toFixed(1)}万`;
+  return `${sign}${abs.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
+}
+
+function formatSignedMoney(value: number) {
+  return value > 0 ? `+${formatMoney(value)}` : formatMoney(value);
+}
+
+function valueTone(value: number) {
+  if (value > 0) return 'text-t-red';
+  if (value < 0) return 'text-t-green';
+  return 'text-t-textBright';
+}
+
+function AccountOverviewPanel({
+  summary,
+  initialCapital,
+  onCapitalChange,
+}: {
+  summary: AccountSummary;
+  initialCapital: number;
+  onCapitalChange: (value: number) => void;
+}) {
+  const topPositions = summary.positions.slice(0, 4);
+
+  return (
+    <section className="panel overflow-hidden">
+      <div className="px-4 py-3 border-b border-t-border bg-[#131722] flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2">
+            <WalletCards className="w-4 h-4 text-t-blue" /> 资金账户总览
+          </h2>
+          <p className="text-[11px] text-t-textDim mt-1">交易记录自动汇总现金、持仓、市值和浮盈亏，给组合仓位管理一个真实账户底座。</p>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-t-textDim">
+          初始资金
+          <input
+            type="number"
+            min={0}
+            step={10000}
+            value={initialCapital}
+            onChange={event => {
+              const value = Number(event.currentTarget.value);
+              if (Number.isFinite(value) && value >= 0) onCapitalChange(value);
+            }}
+            className="w-28 rounded border border-t-border bg-[#0f131b] px-2 py-1 text-right text-t-textBright data-num outline-none focus:border-t-blue"
+          />
+        </label>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-t-border">
+        <CommandMetric icon={WalletCards} label="账户总资产" value={formatMoney(summary.totalAssets)} tone={valueTone(summary.totalPnL)} detail={`总收益 ${formatSignedMoney(summary.totalPnL)} / ${formatPct(summary.totalReturnPct)}`} />
+        <CommandMetric icon={Activity} label="今日盈亏" value={formatSignedMoney(summary.todayPnL)} tone={valueTone(summary.todayPnL)} detail={`已实现 ${formatSignedMoney(summary.realizedPnL)}`} />
+        <CommandMetric icon={LineChart} label="持仓市值" value={formatMoney(summary.marketValue)} tone="text-t-blue" detail={`仓位 ${summary.investedPct.toFixed(1)}%`} />
+        <CommandMetric icon={ShieldCheck} label="可用现金" value={formatMoney(summary.cash)} tone={summary.cash >= 0 ? 'text-t-yellow' : 'text-t-green'} detail={`现金 ${summary.availableCashPct.toFixed(1)}%`} />
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-0">
+        <div className="p-3 border-r border-t-border">
+          <h3 className="text-xs font-semibold text-t-textBright mb-2">账户仓位结构</h3>
+          <div className="space-y-2">
+            <AccountAllocationBar label="持仓" value={summary.investedPct} tone="bg-t-red" />
+            <AccountAllocationBar label="现金" value={summary.availableCashPct} tone="bg-t-yellow" />
+            <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
+              <ActionLine label="浮动盈亏" value={formatSignedMoney(summary.unrealizedPnL)} />
+              <ActionLine label="持仓数量" value={`${summary.positions.length}只`} />
+            </div>
+          </div>
+        </div>
+        <div className="p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h3 className="text-xs font-semibold text-t-textBright">持仓权重前列</h3>
+            <Link to="/trades" className="text-[11px] text-t-blue hover:underline">维护交易记录</Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {topPositions.length ? topPositions.map(position => (
+              <Link key={position.code} to={`/analysis?code=${position.code}`} className="rounded border border-t-border bg-white/[0.02] p-2 hover:bg-white/[0.04]">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-t-textBright truncate">{position.name}</div>
+                    <div className="text-[10px] text-t-textDim data-num">{position.code} · {position.shares}股</div>
+                  </div>
+                  <div className="text-right data-num">
+                    <div className={`text-xs font-bold ${valueTone(position.unrealizedPnL)}`}>{formatPct(position.unrealizedPct)}</div>
+                    <div className="text-[10px] text-t-textDim">{position.weight.toFixed(1)}%</div>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-t-textDim">
+                  <span>市值 {formatMoney(position.marketValue)}</span>
+                  <span className={valueTone(position.todayPnL)}>今日 {formatSignedMoney(position.todayPnL)}</span>
+                </div>
+              </Link>
+            )) : (
+              <Link to="/trades" className="md:col-span-2 rounded border border-dashed border-t-border bg-white/[0.02] p-3 text-xs text-t-textDim hover:text-t-text">
+                暂无持仓。录入买卖记录后，这里会自动生成资金、仓位和持仓收益。
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AccountAllocationBar({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px] mb-1">
+        <span className="text-t-textDim">{label}</span>
+        <span className="data-num text-t-textBright">{value.toFixed(1)}%</span>
+      </div>
+      <div className="h-1.5 rounded bg-white/[0.06] overflow-hidden">
+        <div className={`h-full rounded ${tone}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function logToneClass(tone: StrategyPoolLog['tone']) {
+  if (tone === 'red') return 'border-t-red/30 bg-t-red/5 text-t-red';
+  if (tone === 'green') return 'border-t-green/30 bg-t-green/5 text-t-green';
+  if (tone === 'yellow') return 'border-t-yellow/30 bg-t-yellow/5 text-t-yellow';
+  return 'border-t-blue/30 bg-t-blue/5 text-t-blue';
+}
+
+function StrategyJournalPanel({ logs, current }: { logs: StrategyPoolLog[]; current: StrategyPoolSnapshotItem[] }) {
+  return (
+    <section className="grid grid-cols-1 xl:grid-cols-[0.95fr_1.05fr] gap-3">
+      <div className="panel p-3">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2">
+              <History className="w-4 h-4 text-t-yellow" /> 策略池换票日志
+            </h2>
+            <p className="text-[11px] text-t-textDim mt-0.5">自动池每次发生入选、出池、升级或降级，都会留下解释。</p>
+          </div>
+          <span className="text-[10px] text-t-textDim data-num">{logs.length} 条</span>
+        </div>
+        <div className="space-y-2">
+          {logs.slice(0, 4).map(log => (
+            <Link key={log.id} to={`/analysis?code=${log.code}`} className={`block rounded border p-2 hover:bg-white/[0.04] ${logToneClass(log.tone)}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-t-textBright truncate">{log.title}</span>
+                <span className="text-[10px] data-num">{log.time}</span>
+              </div>
+              <div className="mt-1 text-[11px] leading-relaxed text-t-textSecondary line-clamp-2">{log.detail}</div>
+            </Link>
+          ))}
+          {!logs.length && (
+            <div className="rounded border border-t-border bg-white/[0.02] p-3 text-xs text-t-textDim">
+              首次快照已建立。下一次行情或策略分变化导致名单变动时，会自动记录换票原因。
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="panel p-3">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2">
+            <Target className="w-4 h-4 text-t-red" /> 当前候选触发层
+          </h2>
+          <Link to="/screener" className="text-[11px] text-t-blue hover:underline">进入筛选器</Link>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {current.slice(0, 6).map(item => (
+            <Link key={item.code} to={`/analysis?code=${item.code}`} className="rounded border border-t-border bg-white/[0.02] p-2 hover:bg-white/[0.04]">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] text-t-textDim data-num">#{item.rank} {item.code}</div>
+                  <div className="text-xs font-semibold text-t-textBright truncate">{item.name}</div>
+                </div>
+                <span className={`text-sm font-bold data-num ${item.score >= 70 ? 'text-t-red' : 'text-t-yellow'}`}>{item.score}</span>
+              </div>
+              <div className="mt-1 flex items-center gap-1.5 text-[10px]">
+                <span className="px-1 rounded bg-t-blue/10 text-t-blue">{item.strategy}</span>
+                <span className={item.intelLabel.startsWith('行业') ? 'text-t-green' : item.intelLabel === '资讯0' ? 'text-t-textDim' : 'text-t-red'}>{item.intelLabel}</span>
+                <span className="text-t-textDim">置信{item.confidence}%</span>
+              </div>
+              <div className="mt-1 text-[11px] text-t-textDim truncate">{item.reason}</div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
