@@ -20,9 +20,12 @@ import {
   Star,
   TrendingDown,
   TrendingUp,
+  WalletCards,
 } from 'lucide-react';
 
-import { getStockList } from '../data/mockData';
+import { getAlerts, getStockList, saveAlerts, type AlertRule, type TradeRecord } from '../data/mockData';
+import { buildIntelLinkageDashboard, type AlertIdea, type IntelLinkageDashboard } from '../data/intelLinkage';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface WatchItem {
   code: string;
@@ -222,6 +225,7 @@ function buildCopyText(payload: IntelPayload) {
 export default function IntelRadar() {
   const stockList = useMemo(() => getStockList(), []);
   const stockMap = useMemo(() => new Map(stockList.map(stock => [stock.code, stock])), [stockList]);
+  const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
   const [codes, setCodes] = useState<string[]>(() => readWatchCodes());
   const [manualCodes, setManualCodes] = useState(() => readWatchCodes().join(', '));
   const [payload, setPayload] = useState<IntelPayload>(() => emptyPayload(readWatchCodes(), '正在等待首次扫描。'));
@@ -229,6 +233,8 @@ export default function IntelRadar() {
   const [error, setError] = useState('');
   const [lastUpdate, setLastUpdate] = useState('');
   const [copied, setCopied] = useState(false);
+  const [alertVersion, setAlertVersion] = useState(0);
+  const existingAlerts = useMemo(() => getAlerts(), [alertVersion]);
 
   const watchNames = useMemo(() => codes.map(code => ({
     code,
@@ -243,6 +249,7 @@ export default function IntelRadar() {
     return map;
   }, [payload.stockHits]);
   const actionQueue = useMemo(() => buildActionQueue(payload), [payload]);
+  const linkage = useMemo(() => buildIntelLinkageDashboard({ payload, trades, existingAlerts }), [existingAlerts, payload, trades]);
   const riskHitCount = payload.marketHits.concat(payload.stockHits).filter(hit => hit.impact === '利空').length;
   const positiveHitCount = payload.marketHits.concat(payload.stockHits).filter(hit => hit.impact === '利好').length;
 
@@ -289,6 +296,22 @@ export default function IntelRadar() {
     } catch {
       setError('复制失败，浏览器没有开放剪贴板权限。');
     }
+  };
+
+  const applyAlertIdea = (idea: AlertIdea) => {
+    const alerts = getAlerts();
+    const nextRule: AlertRule = {
+      id: idea.id,
+      code: idea.code,
+      name: idea.name,
+      type: idea.type,
+      price: idea.price,
+      enabled: true,
+      mode: 'composite',
+      note: `资讯联动｜${idea.label}：${idea.reason}`,
+    };
+    saveAlerts([...alerts.filter(alert => alert.id !== idea.id), nextRule]);
+    setAlertVersion(version => version + 1);
   };
 
   useEffect(() => {
@@ -434,6 +457,8 @@ export default function IntelRadar() {
             </div>
           </div>
 
+          <IntelLinkagePanel linkage={linkage} onApplyAlertIdea={applyAlertIdea} />
+
           <div className="panel p-3">
             <div className="flex items-center justify-between gap-2 mb-2">
               <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2"><Star className="w-4 h-4 text-t-blue" /> 扫描范围</h2>
@@ -493,6 +518,124 @@ export default function IntelRadar() {
           </section>
         </div>
       </section>
+    </div>
+  );
+}
+
+function linkageTone(tone: 'red' | 'green' | 'yellow' | 'blue') {
+  if (tone === 'red') return 'text-t-red border-t-red/25 bg-t-red/5';
+  if (tone === 'green') return 'text-t-green border-t-green/25 bg-t-green/5';
+  if (tone === 'yellow') return 'text-t-yellow border-t-yellow/25 bg-t-yellow/5';
+  return 'text-t-blue border-t-blue/25 bg-t-blue/5';
+}
+
+function IntelLinkagePanel({
+  linkage,
+  onApplyAlertIdea,
+}: {
+  linkage: IntelLinkageDashboard;
+  onApplyAlertIdea: (idea: AlertIdea) => void;
+}) {
+  return (
+    <div className="panel p-3 border border-t-blue/20">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2">
+          <Radio className="w-4 h-4 text-t-blue" /> 资讯联动中枢
+        </h2>
+        <span className="text-[10px] text-t-textDim">{linkage.summary.posture}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <MiniLinkageStat label="ETF联动" value={`${linkage.summary.linkedEtfCount}只`} tone="text-t-blue" />
+        <MiniLinkageStat label="持仓命中" value={`${linkage.summary.holdingHitCount}只`} tone={linkage.summary.holdingHitCount ? 'text-t-yellow' : 'text-t-textDim'} />
+        <MiniLinkageStat label="预警建议" value={`${linkage.summary.alertIdeaCount}条`} tone={linkage.summary.alertIdeaCount ? 'text-t-red' : 'text-t-textDim'} />
+        <MiniLinkageStat label="利好/利空" value={`${linkage.summary.opportunityCount}/${linkage.summary.riskCount}`} tone={linkage.summary.riskCount > linkage.summary.opportunityCount ? 'text-t-green' : 'text-t-red'} />
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <div className="text-xs font-semibold text-t-textBright mb-2 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-t-yellow" /> ETF暴露
+          </div>
+          <div className="space-y-2">
+            {linkage.etfRows.slice(0, 4).map(row => (
+              <Link key={row.code} to={`/analysis?code=${row.code}`} className={`block rounded border p-2 hover:bg-white/[0.04] ${linkageTone(row.tone)}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-t-textBright truncate">{row.name}</div>
+                    <div className="text-[10px] text-t-textDim truncate">{row.theme} · {row.role}</div>
+                  </div>
+                  <div className="text-right data-num">
+                    <div className="text-xs font-bold">{row.score > 0 ? '+' : ''}{row.score}</div>
+                    <div className="text-[10px]">{row.label}</div>
+                  </div>
+                </div>
+                <div className="mt-1 text-[11px] text-t-textDim line-clamp-2">{row.reason}</div>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold text-t-textBright mb-2 flex items-center gap-1.5">
+            <WalletCards className="w-3.5 h-3.5 text-t-blue" /> 持仓影响
+          </div>
+          {linkage.holdingRows.length ? (
+            <div className="space-y-2">
+              {linkage.holdingRows.slice(0, 3).map(row => (
+                <Link key={row.code} to={`/analysis?code=${row.code}`} className={`block rounded border p-2 hover:bg-white/[0.04] ${linkageTone(row.tone)}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-t-textBright truncate">{row.name}</span>
+                    <span className="text-xs data-num">{row.score > 0 ? '+' : ''}{row.score}</span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-t-textDim line-clamp-2">{row.action}</div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded border border-t-border bg-white/[0.02] p-2 text-[11px] text-t-textDim">
+              当前没有本地持仓，资讯先联动ETF和预警建议。
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold text-t-textBright mb-2 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-t-yellow" /> 预警建议
+          </div>
+          {linkage.alertIdeas.length ? (
+            <div className="space-y-2">
+              {linkage.alertIdeas.slice(0, 4).map(idea => (
+                <div key={idea.id} className="rounded border border-t-border bg-white/[0.02] p-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-t-textBright truncate">{idea.name}</div>
+                      <div className="text-[10px] text-t-textDim data-num">{idea.code} · {idea.type === 'above' ? '突破' : '跌破'} {idea.price.toFixed(3)}</div>
+                    </div>
+                    <button onClick={() => onApplyAlertIdea(idea)} className="px-2 py-0.5 rounded bg-t-blue text-white text-[10px] whitespace-nowrap">
+                      加入
+                    </button>
+                  </div>
+                  <div className="mt-1 text-[11px] text-t-textDim line-clamp-2">{idea.label}：{idea.reason}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded border border-t-border bg-white/[0.02] p-2 text-[11px] text-t-textDim">
+              暂无新的资讯预警建议，已有价格/复合预警继续有效。
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniLinkageStat({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div className="rounded border border-t-border bg-white/[0.02] p-2">
+      <div className="text-[10px] text-t-textDim">{label}</div>
+      <div className={`mt-1 text-sm font-bold data-num ${tone}`}>{value}</div>
     </div>
   );
 }
