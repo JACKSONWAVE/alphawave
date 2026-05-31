@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, DollarSign, Percent, Plus, Shield, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, CheckCircle2, ClipboardCheck, DollarSign, Percent, Plus, Shield, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { getKlineData, getStockList } from '../data/mockData';
 import type { TradeRecord } from '../data/mockData';
 import { calcIndicatorScore } from '../data/analysisEngine';
@@ -9,6 +10,7 @@ import { buildMultiTimeframeReport } from '../data/multiTimeframe';
 import { formatPct, formatPrice } from '../data/price';
 import { buildStrategyPlan } from '../data/strategyEngine';
 import { buildHoldingAdvice } from '../data/tradeGuard';
+import { buildTradeExecutionReview, type TradeExecutionReview } from '../data/tradeReview';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import StockPicker from '../components/StockPicker';
 
@@ -102,6 +104,7 @@ export default function Trades() {
   const maxConcentration = holdingRiskRows.reduce((max, row) => Math.max(max, row.concentration), 0);
   const stopHitCount = holdingRiskRows.filter(row => row.price <= row.stopLoss).length;
   const protectProfitCount = holdingRiskRows.filter(row => row.advice.label === '保护利润').length;
+  const executionReview = useMemo(() => buildTradeExecutionReview(trades), [trades]);
 
   return (
     <div className="space-y-3">
@@ -122,6 +125,8 @@ export default function Trades() {
           </div>
         ))}
       </div>
+
+      <TradeReviewPanel review={executionReview} />
 
       <div className="panel p-3 border border-t-blue/25">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
@@ -300,6 +305,100 @@ export default function Trades() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+function toneClass(tone: 'red' | 'green' | 'yellow' | 'blue') {
+  if (tone === 'red') return 'text-t-red border-t-red/25 bg-t-red/5';
+  if (tone === 'green') return 'text-t-green border-t-green/25 bg-t-green/5';
+  if (tone === 'yellow') return 'text-t-yellow border-t-yellow/25 bg-t-yellow/5';
+  return 'text-t-blue border-t-blue/25 bg-t-blue/5';
+}
+
+function TradeReviewPanel({ review }: { review: TradeExecutionReview }) {
+  const gradeTone = review.grade === 'A' ? 'text-t-red' : review.grade === 'B' ? 'text-t-blue' : review.grade === 'C' ? 'text-t-yellow' : 'text-t-green';
+  const plannedPct = review.buyCount > 0 ? review.plannedBuyCount / review.buyCount * 100 : 0;
+  const sellPct = review.sellCount > 0 ? review.disciplinedSellCount / review.sellCount * 100 : 0;
+
+  return (
+    <section className="panel overflow-hidden border border-t-yellow/20">
+      <div className="px-4 py-3 border-b border-t-border bg-[#131722] flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2">
+            <ClipboardCheck className="w-4 h-4 text-t-yellow" /> 交易执行复盘
+          </h2>
+          <p className="text-[11px] text-t-textDim mt-1">把每笔买卖和当时策略计划对齐，区分计划内低吸、突破确认、追高风险和止损/止盈纪律。</p>
+        </div>
+        <div className="text-right">
+          <div className={`text-3xl font-bold data-num ${gradeTone}`}>{review.grade}</div>
+          <div className="text-[10px] text-t-textDim">执行评分 {review.score || '--'}</div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 border-b border-t-border">
+        <ReviewMetric label="交易笔数" value={`${review.tradeCount}`} detail={`买${review.buyCount} / 卖${review.sellCount}`} tone="text-t-textBright" />
+        <ReviewMetric label="计划内买入" value={`${review.plannedBuyCount}`} detail={`${plannedPct.toFixed(0)}% 买入合规`} tone={plannedPct >= 60 ? 'text-t-red' : 'text-t-yellow'} />
+        <ReviewMetric label="追高风险" value={`${review.chaseBuyCount}`} detail="高于计划区买入" tone={review.chaseBuyCount ? 'text-t-yellow' : 'text-t-blue'} />
+        <ReviewMetric label="纪律卖出" value={`${review.disciplinedSellCount}`} detail={`${sellPct.toFixed(0)}% 卖出有依据`} tone={sellPct >= 60 ? 'text-t-blue' : 'text-t-yellow'} />
+        <ReviewMetric label="缺少备注" value={`${review.missingNoteCount}`} detail="影响复盘质量" tone={review.missingNoteCount ? 'text-t-green' : 'text-t-blue'} />
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-0">
+        <div className="p-3 border-r border-t-border">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4 text-t-yellow" />
+            <h3 className="text-xs font-semibold text-t-textBright">问题队列</h3>
+          </div>
+          <div className="space-y-2">
+            {review.issues.map(issue => (
+              <div key={issue.title} className={`rounded border p-2 ${toneClass(issue.tone)}`}>
+                <div className="text-xs font-semibold text-t-textBright">{issue.title}</div>
+                <div className="mt-1 text-[11px] text-t-textDim leading-relaxed">{issue.detail}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h3 className="text-xs font-semibold text-t-textBright flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-t-blue" /> 最近交易审计</h3>
+            <span className="text-[10px] text-t-textDim">按时间倒序</span>
+          </div>
+          <div className="space-y-2">
+            {review.rows.slice(0, 5).map(row => (
+              <Link key={row.id} to={`/analysis?code=${row.code}`} className={`block rounded border p-2 hover:bg-white/[0.04] ${toneClass(row.tone)}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-t-textBright truncate">{row.name}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${row.type === 'buy' ? 'bg-t-red/15 text-t-red' : 'bg-t-green/15 text-t-green'}`}>{row.type === 'buy' ? '买入' : '卖出'}</span>
+                      <span className="text-[10px] text-t-textDim data-num">{row.date}</span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-t-textDim line-clamp-2">{row.reason}</div>
+                  </div>
+                  <div className="text-right data-num">
+                    <div className="text-xs font-bold text-t-textBright">{row.score}</div>
+                    <div className="text-[10px]">{row.label}</div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+            {!review.rows.length && (
+              <div className="rounded border border-t-border bg-white/[0.02] p-3 text-xs text-t-textDim">
+                暂无交易记录。录入第一笔交易后，这里会自动生成执行审计。
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReviewMetric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: string }) {
+  return (
+    <div className="p-3 border-r border-t-border last:border-r-0 min-w-0">
+      <div className="text-[10px] text-t-textDim">{label}</div>
+      <div className={`mt-1 text-xl font-bold data-num ${tone}`}>{value}</div>
+      <div className="text-[10px] text-t-textDim mt-0.5 truncate">{detail}</div>
     </div>
   );
 }
