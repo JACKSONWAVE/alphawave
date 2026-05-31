@@ -9,11 +9,13 @@ import {
   Bot,
   BriefcaseBusiness,
   CheckCircle2,
+  ClipboardCheck,
   Crosshair,
   Database,
   Gauge,
   History,
   LineChart,
+  ListChecks,
   Radar,
   RefreshCw,
   ShieldCheck,
@@ -31,8 +33,10 @@ import { buildDailyStrategyPicks, buildETFStrategyPicks, scoreStrategyStock, typ
 import { buildMarketScanner, type IndustryHeat, type MarketScannerReport } from '../data/marketScanner';
 import { buildDataFreshness, buildRequirementAudit, type SystemAuditItem } from '../data/systemAudit';
 import { buildPortfolioWorkbench } from '../data/portfolioEngine';
-import { buildAccountSummary, type AccountSummary } from '../data/accountEngine';
+import { buildAccountPerformance, buildAccountSummary, type AccountSummary } from '../data/accountEngine';
 import { buildStrategySnapshot, diffStrategySnapshots, type StrategyPoolLog, type StrategyPoolSnapshotItem } from '../data/strategyJournal';
+import { buildTradeExecutionReview } from '../data/tradeReview';
+import { buildDailyOperationsBrief, type DailyOperationsBrief, type BriefTone } from '../data/dailyBrief';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import RealtimeStatus from '../components/RealtimeStatus';
@@ -196,6 +200,8 @@ export default function Dashboard() {
 
   const holdings = useMemo(() => buildHoldingPositions(trades), [trades]);
   const accountSummary = useMemo(() => buildAccountSummary(trades, initialCapital, realtimeQuotes), [initialCapital, realtimeQuotes, trades]);
+  const accountPerformance = useMemo(() => buildAccountPerformance(trades, initialCapital), [initialCapital, trades]);
+  const tradeReview = useMemo(() => buildTradeExecutionReview(trades), [trades]);
   const portfolioWorkbench = useMemo(() => buildPortfolioWorkbench(trades), [trades]);
   const dailyPicks = useMemo(() => buildDailyStrategyPicks(16), [realtimeQuotes]);
   const etfPicks = useMemo(() => buildETFStrategyPicks(8), []);
@@ -281,9 +287,23 @@ export default function Dashboard() {
     setPoolSnapshot(currentPoolSnapshot);
   }, [currentPoolSnapshot, poolSnapshot, setPoolLogs, setPoolSnapshot]);
 
+  const dailyBrief = useMemo(() => buildDailyOperationsBrief({
+    scanner: marketScanner,
+    portfolio: portfolioWorkbench,
+    account: accountSummary,
+    performance: accountPerformance,
+    tradeReview,
+    dailyPicks,
+    etfPicks,
+    poolLogs,
+    deskMode,
+  }), [accountPerformance, accountSummary, dailyPicks, deskMode, etfPicks, marketScanner, poolLogs, portfolioWorkbench, tradeReview]);
+
   return (
     <div className="space-y-3">
       <RealtimeStatus />
+
+      <DailyBriefPanel brief={dailyBrief} />
 
       <MarketRadarPanel report={marketScanner} deskMode={deskMode} />
 
@@ -632,6 +652,87 @@ function valueTone(value: number) {
   if (value > 0) return 'text-t-red';
   if (value < 0) return 'text-t-green';
   return 'text-t-textBright';
+}
+
+function briefTextTone(tone: BriefTone) {
+  if (tone === 'red') return 'text-t-red';
+  if (tone === 'green') return 'text-t-green';
+  if (tone === 'yellow') return 'text-t-yellow';
+  return 'text-t-blue';
+}
+
+function briefSurfaceTone(tone: BriefTone) {
+  if (tone === 'red') return 'border-t-red/30 bg-t-red/5';
+  if (tone === 'green') return 'border-t-green/30 bg-t-green/5';
+  if (tone === 'yellow') return 'border-t-yellow/30 bg-t-yellow/5';
+  return 'border-t-blue/30 bg-t-blue/5';
+}
+
+function DailyBriefPanel({ brief }: { brief: DailyOperationsBrief }) {
+  const metricIcons = [Radar, BriefcaseBusiness, LineChart, ClipboardCheck];
+  const postureTone = brief.posture === '进攻' ? 'text-t-red border-t-red/35 bg-t-red/10' : brief.posture === '防守' ? 'text-t-green border-t-green/35 bg-t-green/10' : 'text-t-yellow border-t-yellow/35 bg-t-yellow/10';
+
+  return (
+    <section className="panel overflow-hidden">
+      <div className="px-4 py-3 border-b border-t-border bg-[#131722] flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2">
+            <ClipboardCheck className="w-4 h-4 text-t-blue" /> 今日作战简报
+          </h2>
+          <p className="text-[11px] text-t-textDim mt-1 max-w-4xl">{brief.headline}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className={`px-2 py-1 rounded border data-num ${postureTone}`}>{brief.posture}</span>
+          <span className="text-t-textDim data-num">{brief.generatedAt}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-t-border">
+        {brief.metrics.map((metric, index) => {
+          const Icon = metricIcons[index] || Activity;
+          return <CommandMetric key={metric.label} icon={Icon} label={metric.label} value={metric.value} tone={briefTextTone(metric.tone)} detail={metric.detail} />;
+        })}
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[1.05fr_0.95fr] gap-0">
+        <div className="p-3 border-r border-t-border">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h3 className="text-xs font-semibold text-t-textBright flex items-center gap-2"><ListChecks className="w-3.5 h-3.5 text-t-blue" /> 先做什么</h3>
+            <span className="text-[10px] text-t-textDim">{brief.riskBudget}</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {brief.actions.map(action => (
+              <Link key={`${action.title}-${action.tag}`} to={action.href} className={`rounded border p-2 hover:bg-white/[0.04] transition-colors ${briefSurfaceTone(action.tone)}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-xs font-semibold text-t-textBright leading-snug">{action.title}</span>
+                  <span className={`shrink-0 text-[10px] data-num ${briefTextTone(action.tone)}`}>{action.tag}</span>
+                </div>
+                <div className="mt-1 text-[11px] text-t-textSecondary leading-relaxed line-clamp-2">{action.detail}</div>
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h3 className="text-xs font-semibold text-t-textBright flex items-center gap-2"><Crosshair className="w-3.5 h-3.5 text-t-red" /> 重点盯盘</h3>
+            <Link to="/intel" className="text-[11px] text-t-blue hover:underline">联动资讯雷达</Link>
+          </div>
+          <div className="space-y-2">
+            {brief.focus.map(item => (
+              <Link key={`${item.label}-${item.code}-${item.name}`} to={item.href} className="flex items-center justify-between gap-3 rounded border border-t-border bg-white/[0.02] p-2 hover:bg-white/[0.04]">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-t-textBright truncate">{item.name}</span>
+                    <span className="text-[10px] data-num text-t-textDim shrink-0">{item.code}</span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-t-textDim truncate">{item.detail}</div>
+                </div>
+                <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded border ${briefSurfaceTone(item.tone)} ${briefTextTone(item.tone)}`}>{item.label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function AccountOverviewPanel({
