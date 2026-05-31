@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, ArrowUpRight, BarChart3, BriefcaseBusiness, Gauge, Layers3, ShieldCheck, Target, WalletCards } from 'lucide-react';
+import { Activity, ArrowUpRight, BarChart3, BriefcaseBusiness, Gauge, Layers3, ShieldCheck, Target, TrendingDown, TrendingUp, WalletCards } from 'lucide-react';
 
 import { buildPortfolioWorkbench, type LayeredStrategyPool, type PortfolioPositionPlan, type StrategyLayer } from '../data/portfolioEngine';
+import { buildAccountPerformance, type AccountPerformance } from '../data/accountEngine';
 import { formatPct, formatPrice } from '../data/price';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import type { TradeRecord } from '../data/mockData';
@@ -17,9 +18,20 @@ const layerTone: Record<StrategyLayer, string> = {
 
 export default function Portfolio() {
   const [trades] = useLocalStorage<TradeRecord[]>('trades', []);
+  const [initialCapital] = useLocalStorage<number>('account_initial_capital', 1000000);
   const workbench = useMemo(() => buildPortfolioWorkbench(trades), [trades]);
+  const accountPerformance = useMemo(() => buildAccountPerformance(trades, initialCapital), [initialCapital, trades]);
   const [activeLayer, setActiveLayer] = useState<StrategyLayer>('进攻');
+  const [curveMode, setCurveMode] = useState<'account' | 'model'>('account');
   const selectedLayer = workbench.layers.find(layer => layer.layer === activeLayer) || workbench.layers[0];
+  const curveData = useMemo(() => (
+    curveMode === 'account'
+      ? accountPerformance.curve.map(point => ({ ...point, portfolio: point.equity }))
+      : workbench.curve
+  ), [accountPerformance.curve, curveMode, workbench.curve]);
+  const curveHint = curveMode === 'account'
+    ? '真实账户按交易记录和每日收盘价盯市，适合检查资金曲线和回撤压力。'
+    : '模型组合对比沪深300ETF，回撤线用于观察策略仓位压力。';
 
   return (
     <div className="space-y-3">
@@ -51,24 +63,28 @@ export default function Portfolio() {
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
               <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2"><Activity className="w-4 h-4 text-t-blue" /> 组合收益曲线</h2>
-              <p className="text-[11px] text-t-textDim mt-0.5">模型组合对比沪深300ETF，回撤线用于观察仓位压力。</p>
+              <p className="text-[11px] text-t-textDim mt-0.5">{curveHint}</p>
             </div>
-            <span className="text-[10px] text-t-textDim">近180个交易样本</span>
+            <div className="inline-flex rounded border border-t-border overflow-hidden">
+              <button onClick={() => setCurveMode('account')} className={`px-2.5 py-1 text-xs ${curveMode === 'account' ? 'bg-t-blue text-white' : 'text-t-textDim hover:bg-t-panelHover hover:text-t-text'}`}>真实账户</button>
+              <button onClick={() => setCurveMode('model')} className={`px-2.5 py-1 text-xs border-l border-t-border ${curveMode === 'model' ? 'bg-t-blue text-white' : 'text-t-textDim hover:bg-t-panelHover hover:text-t-text'}`}>模型组合</button>
+            </div>
           </div>
           <div className="h-[330px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={workbench.curve}>
+              <AreaChart data={curveData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2a2f3f" />
                 <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#2a2f3f' }} tickFormatter={value => String(value).slice(5)} />
                 <YAxis yAxisId="left" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#2a2f3f' }} domain={['auto', 'auto']} width={46} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#2a2f3f' }} domain={[-20, 0]} width={42} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={{ stroke: '#2a2f3f' }} domain={['dataMin', 0]} width={42} />
                 <Tooltip contentStyle={{ background: '#1a1d29', border: '1px solid #2a2f3f', borderRadius: '6px', fontSize: '11px', color: '#d1d5db' }} />
                 <Area yAxisId="right" type="monotone" dataKey="drawdown" name="回撤" stroke="#22c55e" fill="#22c55e" fillOpacity={0.12} />
-                <Line yAxisId="left" type="monotone" dataKey="portfolio" name="组合" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                <Line yAxisId="left" type="monotone" dataKey="portfolio" name={curveMode === 'account' ? '账户权益' : '模型组合'} stroke="#3b82f6" strokeWidth={2} dot={false} />
                 <Line yAxisId="left" type="monotone" dataKey="benchmark" name="沪深300ETF" stroke="#f59e0b" strokeWidth={1.5} dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          <AccountPerformanceStrip performance={accountPerformance} />
         </div>
 
         <div className="space-y-3">
@@ -172,6 +188,51 @@ function MiniMetric({ label, value, tone }: { label: string; value: string; tone
     <div className="rounded border border-t-border bg-white/[0.03] p-2">
       <div className="text-[10px] text-t-textDim">{label}</div>
       <div className={`mt-1 font-bold data-num ${tone}`}>{value}</div>
+    </div>
+  );
+}
+
+function AccountPerformanceStrip({ performance }: { performance: AccountPerformance }) {
+  const returnTone = performance.totalReturnPct >= 0 ? 'text-t-red' : 'text-t-green';
+  const drawdownTone = performance.maxDrawdown <= -12 ? 'text-t-green' : performance.maxDrawdown <= -7 ? 'text-t-yellow' : 'text-t-blue';
+
+  return (
+    <div className="mt-3 border-t border-t-border pt-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+        <MiniMetric label="真实收益" value={formatPct(performance.totalReturnPct)} tone={returnTone} />
+        <MiniMetric label="最大回撤" value={formatPct(performance.maxDrawdown)} tone={drawdownTone} />
+        <MiniMetric label="交易胜率" value={`${performance.winRate}%`} tone={performance.winRate >= 55 ? 'text-t-red' : performance.winRate >= 45 ? 'text-t-yellow' : 'text-t-textDim'} />
+        <MiniMetric label="利润因子" value={String(performance.profitFactor)} tone={performance.profitFactor >= 1.3 ? 'text-t-red' : performance.profitFactor >= 1 ? 'text-t-blue' : 'text-t-textDim'} />
+        <MiniMetric label="闭合交易" value={`${performance.closedTradeCount}/${performance.tradeCount}`} tone="text-t-blue" />
+      </div>
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-[0.85fr_1.15fr] gap-2">
+        <div className="rounded border border-t-border bg-white/[0.02] p-2">
+          <div className="flex items-center justify-between gap-2 text-[11px]">
+            <span className="text-t-textDim">最佳 / 最差单笔</span>
+            <span className="data-num text-t-textBright">{formatPct(performance.bestTradePct)} / {formatPct(performance.worstTradePct)}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+            <span className="text-t-textDim">平均持仓</span>
+            <span className="data-num text-t-textBright">{performance.avgHoldingDays}天</span>
+          </div>
+        </div>
+        <div className="rounded border border-t-border bg-white/[0.02] p-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-t-textBright">
+            {performance.totalReturnPct >= 0 ? <TrendingUp className="w-3.5 h-3.5 text-t-red" /> : <TrendingDown className="w-3.5 h-3.5 text-t-green" />}
+            账户绩效解释
+          </div>
+          <div className="mt-1 space-y-0.5">
+            {performance.notes.slice(0, 2).map(note => (
+              <p key={note} className="text-[11px] text-t-textDim leading-relaxed">{note}</p>
+            ))}
+          </div>
+        </div>
+      </div>
+      {!performance.hasRealTrades && (
+        <Link to="/trades" className="mt-2 inline-flex items-center gap-1 text-[11px] text-t-blue hover:underline">
+          录入交易后启用真实资金曲线 <ArrowUpRight className="w-3 h-3" />
+        </Link>
+      )}
     </div>
   );
 }
