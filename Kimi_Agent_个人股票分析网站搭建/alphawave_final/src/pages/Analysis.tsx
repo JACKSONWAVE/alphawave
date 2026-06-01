@@ -419,6 +419,9 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
           <Row label={plan.entryZone.label} value={`${formatPrice(plan.entryZone.low)}~${formatPrice(plan.entryZone.high)}`} color="text-t-green" />
           <Row label={plan.addZone.label} value={formatPrice(plan.addZone.low)} color="text-t-blue" />
           <Row label="止损 / 目标" value={`${formatPrice(plan.stopLoss)} / ${formatPrice(plan.target1)}`} color="text-t-textBright" />
+          <Row label="止损依据" value={plan.stopLossBasis} color="text-t-textSecondary" />
+          <Row label="目标依据" value={plan.targetBasis} color="text-t-textSecondary" />
+          <Row label="盈亏比算法" value={plan.riskRewardBasis} color="text-t-textSecondary" />
           <div className="pt-1 text-[11px] text-t-textSecondary leading-relaxed">{plan.positionSize}</div>
         </div>
       </div>

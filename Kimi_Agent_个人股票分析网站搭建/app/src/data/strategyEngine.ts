@@ -72,6 +72,9 @@ export interface StrategyPlan {
   stopLoss: number;
   target1: number;
   target2: number;
+  stopLossBasis: string;
+  targetBasis: string;
+  riskRewardBasis: string;
   support: ReturnType<typeof calcSupportResistance>;
   score: ReturnType<typeof calcIndicatorScore>;
   daily: ReturnType<typeof analyzeDaily>;
@@ -226,6 +229,46 @@ function positionByRisk(action: StrategyAction, confidence: number, rr: number, 
   return `持仓观察为主，单票不超过 ${cap}%`;
 }
 
+function pickPlannedStop(current: number, atr: number, sr: ReturnType<typeof calcSupportResistance>) {
+  const belowCurrent = current * 0.985;
+  const candidates = [
+    {
+      price: sr.weakSupport * 0.985,
+      label: `弱支撑 ${formatPrice(sr.weakSupport)} 下方1.5%`,
+    },
+    {
+      price: current - atr * 1.2,
+      label: `1.2ATR波动止损，ATR约 ${formatPrice(atr)}`,
+    },
+    {
+      price: sr.stopLoss,
+      label: `60日结构止损 ${formatPrice(sr.stopLoss)}`,
+    },
+  ]
+    .filter(item => Number.isFinite(item.price) && item.price > 0 && item.price < belowCurrent)
+    .map(item => ({ ...item, price: Math.min(item.price, belowCurrent) }))
+    .sort((a, b) => b.price - a.price);
+
+  return candidates[0] || {
+    price: current * 0.92,
+    label: '默认8%风控线',
+  };
+}
+
+function pickPlannedTarget(current: number, atr: number, stopLoss: number, sr: ReturnType<typeof calcSupportResistance>) {
+  const riskAmount = Math.max(current - stopLoss, atr);
+  const resistanceTarget = Math.max(sr.weakResistance, sr.targetPrice);
+  const atrTarget = current + atr * 1.8;
+  const rrTarget = current + riskAmount * 1.5;
+  const candidates = [
+    { price: resistanceTarget, label: `压力位/系统目标 ${formatPrice(resistanceTarget)}` },
+    { price: atrTarget, label: `1.8ATR上行测算 ${formatPrice(atrTarget)}` },
+    { price: rrTarget, label: `至少1.5R测算 ${formatPrice(rrTarget)}` },
+  ].sort((a, b) => b.price - a.price);
+
+  return candidates[0];
+}
+
 export function buildStrategyPlanFromData(code: string, name: string, rawData: KlineData[], quote?: RealtimeQuote): StrategyPlan {
   const settings = getAppSettings();
   const etfProfile = getETFProfile(code);
@@ -245,12 +288,15 @@ export function buildStrategyPlanFromData(code: string, name: string, rawData: K
   const m60 = momentum(workingData, 60);
   const volRatio = volumeRatio(workingData);
 
-  const stopLoss = round2(Math.min(sr.stopLoss, current - atr * 1.2, sr.weakSupport * 0.985));
-  const target1 = round2(Math.max(sr.weakResistance, current + atr * 1.8));
-  const target2 = round2(Math.max(sr.strongResistance, target1 + atr * 1.4));
+  const plannedStop = pickPlannedStop(current, atr, sr);
+  const stopLoss = round2(plannedStop.price);
+  const plannedTarget = pickPlannedTarget(current, atr, stopLoss, sr);
+  const target1 = round2(plannedTarget.price);
+  const target2 = round2(Math.max(sr.strongResistance, target1 + atr * 1.4, current + (current - stopLoss) * 2.2));
   const riskPct = current > stopLoss ? (current - stopLoss) / current * 100 : 0;
   const rewardPct = target1 > current ? (target1 - current) / current * 100 : 0;
   const rr = riskPct > 0 ? rewardPct / riskPct : 0;
+  const riskRewardBasis = `按现价 ${formatPrice(current)} 计算：上行 ${pct(rewardPct)}% / 下行 ${pct(riskPct)}%`;
 
   const bias = inferBias(score.overall, ma20, ma60, current, m20);
   const action = chooseAction(score.overall, rr, current, sr.weakSupport, sr.weakResistance);
@@ -333,6 +379,7 @@ export function buildStrategyPlanFromData(code: string, name: string, rawData: K
     `20日动量 ${pct(m20)}%，60日动量 ${pct(m60)}%`,
     `MA20 ${formatPrice(ma20)}，MA60 ${formatPrice(ma60)}，趋势强度 ${Math.round(trend.strength * 100)}%`,
     `量能约为20日均量的 ${pct(volRatio)} 倍`,
+    `止损依据：${plannedStop.label}；目标依据：${plannedTarget.label}`,
   ];
 
   const risks = [
@@ -340,7 +387,7 @@ export function buildStrategyPlanFromData(code: string, name: string, rawData: K
       `ETF主要风险来自跟踪指数/商品本身，不能按单只股票公告逻辑处理`,
       etfProfile.risk === 'high' ? '主题ETF波动较大，单次配置仓位应低于宽基和红利低波' : etfProfile.expenseNote,
     ] : []),
-    `止损到当前价距离 ${pct(riskPct)}%，超过计划仓位会放大回撤`,
+    `止损到当前价距离 ${pct(riskPct)}%，依据为${plannedStop.label}，超过计划仓位会放大回撤`,
     volRatio > 2 ? '近期放量较大，若放量滞涨要防止冲高回落' : '量能未明显放大，突破需要成交量确认',
     current > sr.weakResistance ? '现价靠近压力区，追高的盈亏比会变差' : '未突破前仍可能在支撑压力间震荡',
     '策略基于技术数据，不包含突发公告、业绩预告和政策消息',
@@ -385,6 +432,9 @@ export function buildStrategyPlanFromData(code: string, name: string, rawData: K
     stopLoss,
     target1,
     target2,
+    stopLossBasis: plannedStop.label,
+    targetBasis: plannedTarget.label,
+    riskRewardBasis,
     support: sr,
     score,
     daily,
