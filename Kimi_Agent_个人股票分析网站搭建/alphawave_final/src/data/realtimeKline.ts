@@ -2,11 +2,20 @@ import type { KlineData } from './mockData';
 import type { RealtimeQuote } from './realtimeApi';
 import { roundPrice } from './price';
 
+const MAX_REALTIME_APPEND_GAP_DAYS = 7;
+
 function quoteDate(quote?: RealtimeQuote): string {
   const raw = quote?.time || '';
   const match = raw.match(/^(\d{4})(\d{2})(\d{2})/);
   if (match) return `${match[1]}-${match[2]}-${match[3]}`;
   return new Date().toISOString().slice(0, 10);
+}
+
+function daysBetween(start: string, end: string) {
+  const startTime = new Date(`${start}T00:00:00`).getTime();
+  const endTime = new Date(`${end}T00:00:00`).getTime();
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) return 0;
+  return Math.max(0, Math.round((endTime - startTime) / 86400000));
 }
 
 export function mergeRealtimeQuoteIntoKline(data: KlineData[], quote?: RealtimeQuote): KlineData[] {
@@ -29,6 +38,7 @@ export function mergeRealtimeQuoteIntoKline(data: KlineData[], quote?: RealtimeQ
   }
 
   if (previous.date < date) {
+    if (daysBetween(previous.date, date) > MAX_REALTIME_APPEND_GAP_DAYS) return data;
     return [...data, candle];
   }
 

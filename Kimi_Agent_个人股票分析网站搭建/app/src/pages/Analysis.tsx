@@ -26,7 +26,7 @@ import { buildIntradayStrategy, type IntradayStrategy } from '../data/intradaySt
 import { buildMarketContext, type MarketContext } from '../data/marketContext';
 import { formatPct, formatPrice } from '../data/price';
 import { getAppSettings } from '../data/appSettings';
-import { fetchRemoteKline } from '../data/remoteKline';
+import { fetchRemoteKline, isKlineStale, latestKlineDate } from '../data/remoteKline';
 import { fetchIntradayMinutes } from '../data/realtimeApi';
 import { intradayToKline, mergeRealtimeQuoteIntoKline, type IntradayPoint } from '../data/realtimeKline';
 import { buildStrategyPlanFromData, type StrategyPlan } from '../data/strategyEngine';
@@ -84,6 +84,8 @@ export default function Analysis() {
   const realtimeQuote = realtimeQuotes.find(quote => quote.code === code);
   const days = period === 'all' || period === 'intraday' ? undefined : period;
   const localRawKline = useMemo(() => getKlineData(code), [code]);
+  const localKlineStale = useMemo(() => isKlineStale(localRawKline), [localRawKline]);
+  const localKlineLatestDate = useMemo(() => latestKlineDate(localRawKline), [localRawKline]);
   const fullRawKline = useMemo(() => remoteKline?.length ? remoteKline : localRawKline, [localRawKline, remoteKline]);
   const rawKline = useMemo(() => days ? fullRawKline.slice(-days) : fullRawKline, [days, fullRawKline]);
   const fullKline = useMemo(() => mergeRealtimeQuoteIntoKline(fullRawKline, realtimeQuote), [fullRawKline, realtimeQuote]);
@@ -187,7 +189,7 @@ export default function Analysis() {
   useEffect(() => {
     let active = true;
     setRemoteKline(null);
-    if (selectedStock?.hasKline && localRawKline.length >= 750) {
+    if (selectedStock?.hasKline && localRawKline.length >= 750 && !localKlineStale) {
       setRemoteKlineLoading(false);
       return () => { active = false; };
     }
@@ -203,7 +205,7 @@ export default function Analysis() {
         if (active) setRemoteKlineLoading(false);
       });
     return () => { active = false; };
-  }, [code, selectedStock?.hasKline, localRawKline.length]);
+  }, [code, selectedStock?.hasKline, localRawKline.length, localKlineStale]);
 
   useEffect(() => {
     if (period !== 'intraday') return;
@@ -263,9 +265,9 @@ export default function Analysis() {
     <div className="h-full min-h-0 overflow-hidden flex flex-col gap-3">
       <div className="panel p-3 flex flex-wrap items-center gap-3 flex-shrink-0">
         <StockPicker stocks={stockList} value={code} onChange={setCode} className="w-64 max-w-full" />
-        {(!selectedStock?.hasKline || remoteKlineLoading || remoteKline?.length) && (
+        {(!selectedStock?.hasKline || localKlineStale || remoteKlineLoading || remoteKline?.length) && (
           <span className={`text-[10px] px-1.5 py-0.5 rounded border ${remoteKline?.length ? 'text-t-blue border-t-blue/30 bg-t-blue/10' : 'text-t-yellow border-t-yellow/30 bg-t-yellow/10'}`}>
-            {remoteKlineLoading ? '补齐10年K线' : remoteKline?.length ? `回测K线 ${remoteKline.length}` : '临时估算K线'}
+            {remoteKlineLoading ? `补齐K线 ${localKlineLatestDate || '本地缺失'}` : remoteKline?.length ? `回测K线 ${remoteKline.length}` : localKlineStale ? `本地K线停在${localKlineLatestDate}` : '临时估算K线'}
           </span>
         )}
         <div>
