@@ -32,6 +32,13 @@ export interface DailyStrategyPick {
   hasDeepData: boolean;
   riskLevel: 'low' | 'medium' | 'high';
   execution: string;
+  dataDate: string;
+  freshnessPenalty: number;
+  momentum5: number;
+  momentum20: number;
+  volumeRatio: number;
+  rotationScore: number;
+  rankDriver: string;
 }
 
 function last<T>(items: T[]): T | undefined {
@@ -50,6 +57,69 @@ function amountScore(stock: StockListItem) {
   if (amount >= 100000000000) return 10;
   if (amount >= 30000000000) return 6;
   return 2;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function daysBetween(start: string, end = new Date().toISOString().slice(0, 10)) {
+  const startTime = new Date(`${start}T00:00:00`).getTime();
+  const endTime = new Date(`${end}T00:00:00`).getTime();
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) return 999;
+  return Math.max(0, Math.round((endTime - startTime) / 86400000));
+}
+
+function changeFrom(data: KlineData[], days: number) {
+  if (data.length <= days) return 0;
+  const latest = data[data.length - 1];
+  const base = data[data.length - 1 - days];
+  return base.close ? (latest.close - base.close) / base.close * 100 : 0;
+}
+
+function rotationStats(stock: StockListItem, kline: KlineData[]) {
+  if (!kline.length) {
+    return {
+      dataDate: '',
+      freshnessPenalty: 0,
+      momentum5: +stock.changePct.toFixed(2),
+      momentum20: +stock.changePct.toFixed(2),
+      volumeRatio: 1,
+      rotationBoost: Math.round(clamp(stock.changePct * 1.5, -8, 10)),
+      rankDriver: `全市场快照 ${formatPct(stock.changePct)}`,
+    };
+  }
+
+  const latest = last(kline);
+  const recent = kline.slice(-21, -1);
+  const avgVolume20 = recent.reduce((sum, item) => sum + item.volume, 0) / Math.max(recent.length, 1);
+  const volumeRatio = latest && avgVolume20 ? latest.volume / avgVolume20 : 1;
+  const momentum5 = kline.length > 6 ? changeFrom(kline, 5) : stock.changePct;
+  const momentum20 = kline.length > 21 ? changeFrom(kline, 20) : stock.changePct;
+  const dataDate = latest?.date || '';
+  const staleDays = dataDate ? daysBetween(dataDate) : 999;
+  const freshnessPenalty = staleDays > 7 ? Math.min(26, (staleDays - 7) * 2) : 0;
+  const momentumBoost = clamp(momentum5 * 1.2, -12, 14) + clamp(momentum20 * 0.45, -10, 16);
+  const volumeBoost = volumeRatio >= 1.6 ? 10 : volumeRatio >= 1.25 ? 6 : volumeRatio >= 1.05 ? 3 : volumeRatio < 0.65 ? -5 : 0;
+  const drivers: string[] = [];
+
+  if (freshnessPenalty > 0) drivers.push(`K线滞后${staleDays}天，降权${freshnessPenalty}`);
+  if (momentum5 >= 4) drivers.push(`5日动量${formatPct(momentum5)}`);
+  else if (momentum5 <= -4) drivers.push(`5日走弱${formatPct(momentum5)}`);
+  if (momentum20 >= 8) drivers.push(`20日趋势${formatPct(momentum20)}`);
+  else if (momentum20 <= -8) drivers.push(`20日趋势${formatPct(momentum20)}`);
+  if (volumeRatio >= 1.25) drivers.push(`量能${volumeRatio.toFixed(1)}x`);
+  if (!drivers.length) drivers.push(dataDate ? `数据更新到${dataDate}` : '数据待补齐');
+
+  return {
+    dataDate,
+    freshnessPenalty,
+    momentum5: +momentum5.toFixed(2),
+    momentum20: +momentum20.toFixed(2),
+    volumeRatio: +volumeRatio.toFixed(2),
+    rotationBoost: Math.round(momentumBoost + volumeBoost - freshnessPenalty),
+    rankDriver: drivers.slice(0, 3).join(' / '),
+  };
 }
 
 function calcDeepSignal(stock: StockListItem, kline: KlineData[]) {
@@ -249,7 +319,8 @@ export function scoreStrategyStock(stock: StockListItem): DailyStrategyPick {
   const deep = stock.hasKline ? calcDeepSignal(stock, kline) : null;
   const fallback = calcUniverseSignal(stock);
   const signal = etfSignal || (deep && deep.score >= 28 ? deep : fallback);
-  const score = Math.round(signal.score + (stock.hasKline || etfSignal ? 10 : 0));
+  const stats = rotationStats(stock, kline);
+  const score = Math.max(0, Math.round(signal.score + (stock.hasKline || etfSignal ? 10 : 0) + stats.rotationBoost));
   const confidence = Math.max(35, Math.min(92, score + (stock.hasKline || etfSignal ? 18 : 8)));
   const evidence = signal.evidence.slice(0, 4);
   const riskLevel = riskLevelOf(stock, score, stock.hasKline || Boolean(etfSignal));
@@ -271,6 +342,13 @@ export function scoreStrategyStock(stock: StockListItem): DailyStrategyPick {
     hasDeepData: stock.hasKline || Boolean(etfSignal),
     riskLevel,
     execution: executionText(signal.strategy, riskLevel),
+    dataDate: stats.dataDate,
+    freshnessPenalty: stats.freshnessPenalty,
+    momentum5: stats.momentum5,
+    momentum20: stats.momentum20,
+    volumeRatio: stats.volumeRatio,
+    rotationScore: score,
+    rankDriver: stats.rankDriver,
     reason: evidence.length
       ? evidence.join('；')
       : etfProfile

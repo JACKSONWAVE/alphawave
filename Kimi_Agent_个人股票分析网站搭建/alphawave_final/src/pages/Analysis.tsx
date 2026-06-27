@@ -20,7 +20,7 @@ import {
   type TradeRecord,
   saveAlerts,
 } from '../data/mockData';
-import { analyzeDaily, calcIndicatorScore, calcSupportResistance } from '../data/analysisEngine';
+import { calcIndicatorScore, calcSupportResistance } from '../data/analysisEngine';
 import { buildBacktestSuite, type StrategyBacktestResult } from '../data/backtestLab';
 import { buildIntradayStrategy, type IntradayStrategy } from '../data/intradayStrategy';
 import { buildMarketContext, type MarketContext } from '../data/marketContext';
@@ -33,6 +33,7 @@ import { buildStrategyPlanFromData, type StrategyPlan } from '../data/strategyEn
 import { buildTechnicalSignalReport, type TechnicalSignal, type TechnicalSignalReport } from '../data/technicalSignals';
 import { buildHoldingAdvice, buildTradeGuard, getHoldingPosition, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
 import { buildMultiTimeframeReport, type MultiTimeframeReport } from '../data/multiTimeframe';
+import { buildCapitalFlowProfile, type CapitalFlowProfile } from '../data/capitalFlow';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { ProKlineChart } from '../components/ProKlineChart';
@@ -149,11 +150,11 @@ export default function Analysis() {
   const trend = useMemo(() => getTrend(kline), [kline]);
   const supportResistance = useMemo(() => calcSupportResistance(kline), [kline]);
   const score = useMemo(() => calcIndicatorScore(kline), [kline]);
-  const daily = useMemo(() => analyzeDaily(kline), [kline]);
   const plan = useMemo(() => buildStrategyPlanFromData(code, stockInfo.name, fullKline, realtimeQuote), [code, stockInfo.name, fullKline, realtimeQuote]);
   const backtests = useMemo(() => buildBacktestSuite(backtestKline), [backtestKline]);
   const marketContext = useMemo(() => buildMarketContext(code, kline), [code, kline]);
   const intradayStrategy = useMemo(() => buildIntradayStrategy(intradayPoints), [intradayPoints]);
+  const capitalFlow = useMemo(() => buildCapitalFlowProfile({ kline: fullKline, intraday: intradayPoints, quote: realtimeQuote }), [fullKline, intradayPoints, realtimeQuote]);
   const holdingPosition = useMemo(() => getHoldingPosition(trades, code), [trades, code]);
   const tradeGuard = useMemo(() => buildTradeGuard({
     currentPrice: latest.close,
@@ -208,13 +209,13 @@ export default function Analysis() {
   }, [code, selectedStock?.hasKline, localRawKline.length, localKlineStale]);
 
   useEffect(() => {
-    if (period !== 'intraday') return;
     let active = true;
+    setIntradayPoints([]);
     fetchIntradayMinutes(code).then(points => {
       if (active) setIntradayPoints(points);
     });
     return () => { active = false; };
-  }, [code, period, realtimeQuote?.time]);
+  }, [code, realtimeQuote?.time]);
 
   const toggleIndicator = (indicator: Indicator) => {
     setIndicators(current => current.includes(indicator) ? current.filter(item => item !== indicator) : [...current, indicator]);
@@ -339,12 +340,87 @@ export default function Analysis() {
             ))}
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin pr-1 space-y-3 pt-3">
-            {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} daily={daily} trend={trend} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} multiTimeframeReport={multiTimeframeReport} onCreatePlanAlerts={createPlanAlerts} planAlertMessage={planAlertMessage} />}
+            {sideTab === 'plan' && <PlanPanel plan={plan} supportResistance={supportResistance} score={score} latest={latest} kline={kline} tradeGuard={tradeGuard} holdingAdvice={holdingAdvice} technicalReport={technicalReport} multiTimeframeReport={multiTimeframeReport} capitalFlow={capitalFlow} onCreatePlanAlerts={createPlanAlerts} planAlertMessage={planAlertMessage} />}
             {sideTab === 'signals' && <ProfessionalSignalsPanel signals={signals} />}
             {sideTab === 'backtest' && <BacktestPanel results={backtests} dataDays={backtestKline.length} />}
             {sideTab === 'market' && <MarketPanel context={marketContext} />}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function formatMoneyWan(value: number, signed = true) {
+  const sign = signed && value > 0 ? '+' : signed && value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  if (abs >= 10000) return `${sign}${(abs / 10000).toFixed(2)}亿`;
+  return `${sign}${abs.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}万`;
+}
+
+function flowTone(value: number) {
+  return value >= 0 ? 'text-t-red' : 'text-t-green';
+}
+
+function CapitalFlowPanel({ profile }: { profile: CapitalFlowProfile }) {
+  const borderTone = profile.institutionNetWan > 0 && profile.priceVsTodayCostPct >= 0
+    ? 'border-t-red/40'
+    : profile.institutionNetWan < 0
+      ? 'border-t-green/40'
+      : 'border-t-yellow/40';
+  const confidenceTone = profile.confidence === '高'
+    ? 'text-t-red bg-t-red/10 border-t-red/30'
+    : profile.confidence === '中'
+      ? 'text-t-blue bg-t-blue/10 border-t-blue/30'
+      : 'text-t-yellow bg-t-yellow/10 border-t-yellow/30';
+
+  return (
+    <div className={`panel p-3 border ${borderTone}`}>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-t-textBright">资金结构估算</h3>
+          <p className="text-[11px] text-t-textDim mt-0.5">{profile.dominant} · {profile.dataLabel}</p>
+        </div>
+        <span className={`px-2 py-0.5 rounded border text-[10px] whitespace-nowrap ${confidenceTone}`}>
+          可信度{profile.confidence}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-[10px] mb-3">
+        <Metric label="机构净流入" value={formatMoneyWan(profile.institutionNetWan)} color={flowTone(profile.institutionNetWan)} />
+        <Metric label="散户净流入" value={formatMoneyWan(profile.retailNetWan)} color={flowTone(profile.retailNetWan)} />
+        <Metric label="日内均价成本" value={formatPrice(profile.avgCostToday)} color={profile.priceVsTodayCostPct >= 0 ? 'text-t-red' : 'text-t-green'} />
+        <Metric label="20日平均成本" value={formatPrice(profile.avgCost20)} color={profile.priceVs20CostPct >= 0 ? 'text-t-red' : 'text-t-green'} />
+      </div>
+
+      <div className="rounded border border-t-border bg-white/[0.02] p-2 mb-3">
+        <div className="flex items-center justify-between text-[10px] mb-1">
+          <span className="text-t-textDim">主动资金占比</span>
+          <span className="data-num text-t-textSecondary">成交额 {formatMoneyWan(profile.totalAmountWan, false)}</span>
+        </div>
+        <div className="h-2 rounded-full overflow-hidden bg-t-border flex">
+          <div className="bg-t-blue" style={{ width: `${profile.institutionSharePct}%` }} />
+          <div className="bg-t-yellow" style={{ width: `${profile.retailSharePct}%` }} />
+        </div>
+        <div className="mt-1 flex justify-between text-[10px] data-num">
+          <span className="text-t-blue">机构 {profile.institutionSharePct}%</span>
+          <span className="text-t-yellow">散户 {profile.retailSharePct}%</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs mb-2">
+        <Row label="机构主动买" value={formatMoneyWan(profile.institutionBuyWan, false)} color="text-t-blue" />
+        <Row label="散户主动买" value={formatMoneyWan(profile.retailBuyWan, false)} color="text-t-yellow" />
+        <Row label="相对日内成本" value={formatPct(profile.priceVsTodayCostPct)} color={profile.priceVsTodayCostPct >= 0 ? 'text-t-red' : 'text-t-green'} />
+        <Row label="获利筹码" value={`${profile.profitableChipPct}%`} color={profile.profitableChipPct >= 60 ? 'text-t-red' : profile.profitableChipPct <= 35 ? 'text-t-green' : 'text-t-yellow'} />
+        <Row label="5日成本" value={formatPrice(profile.avgCost5)} color="text-t-textBright" />
+        <Row label="60日成本" value={formatPrice(profile.avgCost60)} color="text-t-textBright" />
+      </div>
+
+      <p className="text-xs text-t-textSecondary leading-relaxed">{profile.action}</p>
+      <div className="mt-2 space-y-1">
+        {profile.notes.slice(1).map(note => <p key={note} className="text-[11px] text-t-textDim leading-relaxed">· {note}</p>)}
+        <p className="text-[11px] text-t-yellow leading-relaxed">· {profile.risks[0]}</p>
       </div>
     </div>
   );
@@ -372,23 +448,20 @@ function IntradayPanel({ strategy }: { strategy: IntradayStrategy }) {
   );
 }
 
-function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline, tradeGuard, holdingAdvice, technicalReport, multiTimeframeReport, onCreatePlanAlerts, planAlertMessage }: {
+function PlanPanel({ plan, supportResistance, score, latest, kline, tradeGuard, holdingAdvice, technicalReport, multiTimeframeReport, capitalFlow, onCreatePlanAlerts, planAlertMessage }: {
   plan: StrategyPlan;
   supportResistance: ReturnType<typeof calcSupportResistance>;
   score: ReturnType<typeof calcIndicatorScore>;
-  daily: ReturnType<typeof analyzeDaily>;
-  trend: ReturnType<typeof getTrend>;
   latest: { close: number };
   kline: Array<{ close: number }>;
   tradeGuard: TradeGuard;
   holdingAdvice: HoldingAdvice;
   technicalReport: TechnicalSignalReport;
   multiTimeframeReport: MultiTimeframeReport;
+  capitalFlow: CapitalFlowProfile;
   onCreatePlanAlerts: () => void;
   planAlertMessage: string;
 }) {
-  const baseIndex = Math.max(0, kline.length - 60);
-  const change60 = kline[baseIndex]?.close ? (latest.close - kline[baseIndex].close) / kline[baseIndex].close * 100 : 0;
   const inEntryZone = latest.close >= plan.entryZone.low && latest.close <= plan.entryZone.high;
   const breakoutConfirmed = latest.close >= plan.addZone.low;
   const riskDistance = latest.close ? Math.max(0, (latest.close - plan.stopLoss) / latest.close * 100) : 0;
@@ -402,6 +475,8 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
   const executionColor = executionScore >= 3 ? 'text-t-red' : executionScore === 2 ? 'text-t-yellow' : 'text-t-green';
   return (
     <div className="space-y-3">
+      <CapitalFlowPanel profile={capitalFlow} />
+
       <div className={`panel p-3 border ${plan.action === 'exit' || plan.action === 'reduce' ? 'border-t-green/40' : plan.bias === 'bullish' ? 'border-t-red/40' : 'border-t-yellow/40'}`}>
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
@@ -476,23 +551,6 @@ function PlanPanel({ plan, supportResistance, score, daily, trend, latest, kline
             ? tradeGuard.reasons.slice(0, 5).map(reason => <p key={reason}>· {reason}</p>)
             : <p>主要条件通过，但仍按计划价、止损价和仓位上限执行。</p>}
         </div>
-      </div>
-
-      <div className="panel p-3">
-        <h3 className="text-sm font-semibold text-t-textBright mb-2">当日分析</h3>
-        <div className="space-y-2 text-xs text-t-textSecondary">
-          <div>{daily.priceChange}</div>
-          <div>{daily.volumeStatus}</div>
-          <div className="text-t-text">{daily.keyEvent}</div>
-          <div className="text-t-yellow mt-1">{daily.recommendation}</div>
-        </div>
-      </div>
-
-      <div className="panel p-3">
-        <h3 className="text-sm font-semibold text-t-textBright mb-2">趋势分析</h3>
-        <Row label="趋势方向" value={trend.trend === 'up' ? '上升' : trend.trend === 'down' ? '下降' : '横盘'} color={trend.trend === 'up' ? 'text-t-red' : trend.trend === 'down' ? 'text-t-green' : 'text-t-yellow'} />
-        <Row label="趋势强度" value={`${(trend.strength * 100).toFixed(0)}%`} color="text-t-blue" />
-        <Row label="60日涨幅" value={formatPct(change60)} color={change60 >= 0 ? 'text-t-red' : 'text-t-green'} />
       </div>
 
       <div className="panel p-3">

@@ -9,6 +9,8 @@ export interface StrategyPoolSnapshotItem {
   strategy: string;
   riskLevel: DailyStrategyPick['riskLevel'];
   reason: string;
+  rankDriver: string;
+  dataDate: string;
   intelLabel: string;
 }
 
@@ -36,6 +38,8 @@ export function buildStrategySnapshot(
     strategy: pick.strategy,
     riskLevel: pick.riskLevel,
     reason: pick.reason,
+    rankDriver: pick.rankDriver,
+    dataDate: pick.dataDate,
     intelLabel: intelLabelOf(pick),
   }));
 }
@@ -70,7 +74,7 @@ export function diffStrategySnapshots(
         name: item.name,
         type: '入选',
         title: `${item.name} 新进入Top池`,
-        detail: `排名#${item.rank}，${item.strategy}，策略分${item.score}，${item.intelLabel}。${item.reason}`,
+        detail: `排名#${item.rank}，${item.strategy}，策略分${item.score}，${item.intelLabel}。换血原因：${item.rankDriver}。${item.reason}`,
         tone: 'red',
       });
       return;
@@ -90,7 +94,7 @@ export function diffStrategySnapshots(
         name: item.name,
         type: '升级',
         title: `${item.name} 排名上移`,
-        detail: `#${prev.rank} → #${item.rank}，分数${prev.score} → ${item.score}，${item.intelLabel}，主要因${item.reason}`,
+        detail: `#${prev.rank} → #${item.rank}，分数${prev.score} → ${item.score}，${item.intelLabel}，主要因${item.rankDriver}`,
         tone: 'red',
       });
     } else if (downgraded) {
@@ -101,7 +105,7 @@ export function diffStrategySnapshots(
         name: item.name,
         type: '降级',
         title: `${item.name} 权重降级`,
-        detail: `#${prev.rank} → #${item.rank}，分数${prev.score} → ${item.score}，风险${prev.riskLevel} → ${item.riskLevel}，${item.intelLabel}`,
+        detail: `#${prev.rank} → #${item.rank}，分数${prev.score} → ${item.score}，风险${prev.riskLevel} → ${item.riskLevel}，${item.intelLabel}，${item.rankDriver}`,
         tone: 'yellow',
       });
     }
@@ -116,7 +120,7 @@ export function diffStrategySnapshots(
       name: item.name,
       type: '出池',
       title: `${item.name} 暂时出池`,
-      detail: `上一轮排名#${item.rank}，当前被更高分候选替代；原依据：${item.reason}`,
+      detail: `上一轮排名#${item.rank}，当前被更高分候选替代；原换血因子：${item.rankDriver}；原依据：${item.reason}`,
       tone: 'green',
     });
   });

@@ -24,6 +24,23 @@ export interface DataFreshness {
   note: string;
 }
 
+export interface KlineHealthReport {
+  total: number;
+  healthyCount: number;
+  watchCount: number;
+  badCount: number;
+  freshCount: number;
+  tenYearCount: number;
+  latestDate: string;
+  staleCount: number;
+  avgQualityScore: number;
+  status: 'healthy' | 'watch' | 'bad';
+  headline: string;
+  action: string;
+  notes: string[];
+  needsBackfill: DataFreshness[];
+}
+
 export function buildDataFreshness(): DataFreshness[] {
   const today = new Date();
   return getCoreCodes().map(code => {
@@ -78,6 +95,59 @@ export function buildDataFreshness(): DataFreshness[] {
   });
 }
 
+export function buildKlineHealthReport(items: DataFreshness[] = buildDataFreshness()): KlineHealthReport {
+  const total = items.length;
+  const healthyCount = items.filter(item => item.status === 'healthy').length;
+  const watchCount = items.filter(item => item.status === 'watch').length;
+  const badCount = items.filter(item => item.status === 'bad').length;
+  const freshCount = items.filter(item => item.isFresh).length;
+  const tenYearCount = items.filter(item => item.isTenYear).length;
+  const latestDate = items
+    .map(item => item.lastDate)
+    .filter(date => date && date !== '-')
+    .sort((a, b) => b.localeCompare(a))[0] || '-';
+  const needsBackfill = items
+    .filter(item => !item.isFresh || item.status !== 'healthy')
+    .sort((a, b) => b.staleDays - a.staleDays || a.qualityScore - b.qualityScore)
+    .slice(0, 6);
+  const staleCount = items.filter(item => !item.isFresh).length;
+  const avgQualityScore = total ? Math.round(items.reduce((sum, item) => sum + item.qualityScore, 0) / total) : 0;
+  const status: KlineHealthReport['status'] = badCount > 0 || staleCount > Math.max(2, total * 0.2)
+    ? 'bad'
+    : watchCount > 0 || staleCount > 0
+      ? 'watch'
+      : 'healthy';
+  const headline = status === 'healthy'
+    ? `核心K线已更新到 ${latestDate}，可作为今日候选排序底座。`
+    : status === 'watch'
+      ? `核心K线最新到 ${latestDate}，仍有 ${staleCount} 只需要巡检。`
+      : `数据健康存在风险，${badCount} 只质量偏低，先补齐再看策略池。`;
+  const action = needsBackfill.length
+    ? `建议运行 data:backfill 补齐 ${needsBackfill.map(item => item.code).join(', ')}`
+    : '数据健康，无需补齐；下一步观察候选池换血和信号胜率。';
+
+  return {
+    total,
+    healthyCount,
+    watchCount,
+    badCount,
+    freshCount,
+    tenYearCount,
+    latestDate,
+    staleCount,
+    avgQualityScore,
+    status,
+    headline,
+    action,
+    notes: [
+      `10年样本 ${tenYearCount}/${total}，最新交易日 ${latestDate}。`,
+      `健康 ${healthyCount}，观察 ${watchCount}，异常 ${badCount}，平均质量分 ${avgQualityScore}。`,
+      needsBackfill.length ? `优先补齐：${needsBackfill.slice(0, 3).map(item => `${item.name}${item.staleDays}天`).join('、')}` : '候选池不会因为K线陈旧被降权。',
+    ],
+    needsBackfill,
+  };
+}
+
 export function buildRequirementAudit(): SystemAuditItem[] {
   return [
     { id: 1, title: '买卖三角信号开关', status: 'done', detail: '技术分析页已支持手动显示/隐藏，并保存到本地偏好。' },
@@ -94,5 +164,6 @@ export function buildRequirementAudit(): SystemAuditItem[] {
     { id: 12, title: '大盘/行业/宏观联动', status: 'done', detail: '市场温度、行业强弱、成交过热和宏观风险已进入交易建议。' },
     { id: 13, title: '蜡烛图与实时更新', status: 'done', detail: '主图已切为专业蜡烛图，并把实时行情合并进当日 K 线。' },
     { id: 14, title: '分时与日内策略', status: 'done', detail: '分时周期已接入腾讯分钟数据，并输出日内波段策略。' },
+    { id: 15, title: '资金结构与平均成本', status: 'done', detail: '分析页和首页已接入机构/散户资金估算、日内均价成本、20日成本、获利筹码和压力盘。' },
   ];
 }

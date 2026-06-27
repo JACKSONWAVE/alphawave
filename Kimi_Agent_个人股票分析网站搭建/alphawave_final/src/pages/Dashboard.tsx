@@ -31,12 +31,13 @@ import { buildStrategyPlan } from '../data/strategyEngine';
 import { buildHoldingAdvice, buildHoldingPositions, buildTradeGuard, type HoldingAdvice, type TradeGuard } from '../data/tradeGuard';
 import { buildDailyStrategyPicks, buildETFStrategyPicks, scoreStrategyStock, type DailyStrategyPick } from '../data/strategyScreener';
 import { buildMarketScanner, type IndustryHeat, type MarketScannerReport } from '../data/marketScanner';
-import { buildDataFreshness, buildRequirementAudit, type SystemAuditItem } from '../data/systemAudit';
+import { buildDataFreshness, buildKlineHealthReport, buildRequirementAudit, type KlineHealthReport, type SystemAuditItem } from '../data/systemAudit';
 import { buildPortfolioWorkbench } from '../data/portfolioEngine';
 import { buildAccountPerformance, buildAccountSummary, type AccountSummary } from '../data/accountEngine';
 import { buildStrategySnapshot, diffStrategySnapshots, type StrategyPoolLog, type StrategyPoolSnapshotItem } from '../data/strategyJournal';
 import { buildTradeExecutionReview } from '../data/tradeReview';
 import { buildDailyOperationsBrief, type DailyOperationsBrief, type BriefTone } from '../data/dailyBrief';
+import { buildCapitalFlowProfile } from '../data/capitalFlow';
 import { useRealtimeQuotes } from '../hooks/useRealtime';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import RealtimeStatus from '../components/RealtimeStatus';
@@ -247,6 +248,7 @@ export default function Dashboard() {
   const marketContext = useMemo(() => selected ? buildMarketContext(selected.code, getKlineData(selected.code)) : null, [selected]);
   const command = actionStocks[0] || selected;
   const selectedRealtime = realtimeQuotes.find(quote => quote.code === selected?.code);
+  const selectedCapitalFlow = useMemo(() => selected ? buildCapitalFlowProfile({ kline: getKlineData(selected.code), quote: selectedRealtime }) : null, [selected?.code, selectedRealtime]);
   const selectedPlan = useMemo(() => selected ? buildStrategyPlan(selected.code, selected.name, selectedRealtime) : null, [selected, selectedRealtime]);
   const selectedPosition = holdings.find(position => position.code === selected?.code) || null;
   const tradeGuard = selected && selectedPlan
@@ -257,15 +259,9 @@ export default function Dashboard() {
     : null;
   const auditItems = useMemo(() => buildRequirementAudit(), []);
   const freshness = useMemo(() => buildDataFreshness(), []);
+  const klineHealth = useMemo(() => buildKlineHealthReport(freshness), [freshness]);
   const doneCount = auditItems.filter(item => item.status === 'done').length;
   const partialCount = auditItems.filter(item => item.status === 'partial').length;
-  const tenYearCount = freshness.filter(item => item.isTenYear).length;
-  const freshCount = freshness.filter(item => item.isFresh).length;
-  const healthyDataCount = freshness.filter(item => item.status === 'healthy').length;
-  const dataRiskList = freshness
-    .filter(item => item.status !== 'healthy')
-    .sort((a, b) => a.qualityScore - b.qualityScore)
-    .slice(0, 3);
 
   useEffect(() => {
     if (!deskStocks.length) return;
@@ -276,8 +272,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!currentPoolSnapshot.length) return;
-    const previousKey = poolSnapshot.map(item => `${item.code}:${item.rank}:${item.score}:${item.confidence}:${item.riskLevel}:${item.intelLabel}`).join('|');
-    const currentKey = currentPoolSnapshot.map(item => `${item.code}:${item.rank}:${item.score}:${item.confidence}:${item.riskLevel}:${item.intelLabel}`).join('|');
+    const previousKey = poolSnapshot.map(item => `${item.code}:${item.rank}:${item.score}:${item.confidence}:${item.riskLevel}:${item.intelLabel}:${item.rankDriver}:${item.dataDate}`).join('|');
+    const currentKey = currentPoolSnapshot.map(item => `${item.code}:${item.rank}:${item.score}:${item.confidence}:${item.riskLevel}:${item.intelLabel}:${item.rankDriver}:${item.dataDate}`).join('|');
     if (previousKey === currentKey) return;
 
     const logs = diffStrategySnapshots(poolSnapshot, currentPoolSnapshot);
@@ -387,47 +383,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="panel p-3">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div>
-              <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2"><Database className="w-4 h-4 text-t-blue" /> 数据与量化体检</h2>
-              <p className="text-[11px] text-t-textDim mt-0.5">10 年数据、当日更新和策略胜率都在这里做第一层过滤。</p>
-            </div>
-            <div className="text-right text-xs data-num">
-              <div className="text-t-blue font-bold">{tenYearCount}/{freshness.length} 十年样本</div>
-              <div className="text-t-textDim">{freshCount} 只更新到今日 · {healthyDataCount} 健康</div>
-            </div>
-          </div>
-          <div className="space-y-2">
-            {dataRiskList.map(item => (
-              <div key={item.code} className="grid grid-cols-[1fr_auto] gap-2 border border-t-yellow/25 rounded p-2 bg-t-yellow/5">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-t-textBright">{item.name}</span>
-                    <span className="text-[10px] text-t-textDim">{item.lastDate}</span>
-                  </div>
-                  <div className="text-[11px] text-t-textDim truncate">{item.note}</div>
-                </div>
-                <div className={`text-right data-num font-bold ${item.status === 'bad' ? 'text-t-green' : 'text-t-yellow'}`}>{item.qualityScore}</div>
-              </div>
-            ))}
-            {dailyPicks.slice(0, 3).map(candidate => (
-              <div key={candidate.code} className="grid grid-cols-[1fr_auto] gap-2 border border-t-border rounded p-2 bg-white/[0.02]">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-t-textBright">{candidate.name}</span>
-                    <span className="text-[10px] text-t-textDim">{candidate.strategy}</span>
-                  </div>
-                  <div className="text-[11px] text-t-textDim truncate">买区 {candidate.entry} · 止损 {candidate.stop} · 目标 {candidate.target}</div>
-                </div>
-                <div className="text-right data-num">
-                  <div className={candidate.score >= 65 ? 'text-t-red font-bold' : 'text-t-yellow font-bold'}>{candidate.score}</div>
-                  <div className="text-[10px] text-t-textDim">置信 {candidate.confidence}%</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <KlineHealthPanel report={klineHealth} picks={dailyPicks} />
       </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.9fr] gap-3">
@@ -510,13 +466,20 @@ export default function Dashboard() {
 
                   <div className="mt-4">
                     <MiniSparkline values={selected.spark} up={selected.changePct >= 0} />
+                    {selectedCapitalFlow && (
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <QuoteBlock label="机构净额" value={formatDashboardMoneyWan(selectedCapitalFlow.institutionNetWan)} tone={selectedCapitalFlow.institutionNetWan >= 0 ? 'text-t-red' : 'text-t-green'} />
+                        <QuoteBlock label="散户净额" value={formatDashboardMoneyWan(selectedCapitalFlow.retailNetWan)} tone={selectedCapitalFlow.retailNetWan >= 0 ? 'text-t-red' : 'text-t-green'} />
+                        <QuoteBlock label="平均成本" value={formatPrice(selectedCapitalFlow.avgCostToday)} tone={selected.price >= selectedCapitalFlow.avgCostToday ? 'text-t-red' : 'text-t-green'} />
+                      </div>
+                    )}
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                       <ActionLine label="计划买区" value={`${formatPrice(selected.entryLow)}-${formatPrice(selected.entryHigh)}`} />
                       <ActionLine label="止损距离" value={`${selected.riskDistance.toFixed(1)}%`} />
                       <ActionLine label="止损 / 目标" value={`${formatPrice(selected.stopLoss)} / ${formatPrice(selected.target)}`} />
                       <ActionLine label="持仓建议" value={holdingAdvice?.label || selected.trendText} />
                       <ActionLine label="入选解释" value={selected.modeReason} />
-                      <ActionLine label="资讯/行业" value={`${selected.intelLabel} · ${selected.pickReason}`} />
+                      <ActionLine label="资金判断" value={selectedCapitalFlow?.dominant || selected.pickReason} />
                     </div>
                   </div>
 
@@ -1057,6 +1020,65 @@ function IndustryHeatRow({ item, hot = false }: { item: IndustryHeat; hot?: bool
   );
 }
 
+function KlineHealthPanel({ report, picks }: { report: KlineHealthReport; picks: DailyStrategyPick[] }) {
+  const tone = report.status === 'healthy'
+    ? 'text-t-green border-t-green/30'
+    : report.status === 'watch'
+      ? 'text-t-yellow border-t-yellow/30'
+      : 'text-t-red border-t-red/30';
+  const toneText = tone.split(' ')[0];
+  const bestPicks = picks.slice(0, 3);
+
+  return (
+    <div className={`panel p-3 border ${tone}`}>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-t-textBright flex items-center gap-2"><Database className="w-4 h-4 text-t-blue" /> 数据与量化体检</h2>
+          <p className="text-[11px] text-t-textDim mt-0.5">{report.headline}</p>
+        </div>
+        <div className="text-right text-xs data-num">
+          <div className={`font-bold ${toneText}`}>{report.avgQualityScore}</div>
+          <div className="text-[10px] text-t-textDim">质量分</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 mb-3 text-[10px]">
+        <Metric label="10年样本" value={`${report.tenYearCount}/${report.total}`} color="text-t-blue" />
+        <Metric label="今日新鲜" value={`${report.freshCount}`} color="text-t-green" />
+        <Metric label="需巡检" value={`${report.staleCount}`} color={report.staleCount ? 'text-t-yellow' : 'text-t-textBright'} />
+        <Metric label="异常" value={`${report.badCount}`} color={report.badCount ? 'text-t-red' : 'text-t-textBright'} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="rounded border border-t-border bg-white/[0.02] p-2">
+          <div className="text-[10px] text-t-textDim mb-1">数据动作</div>
+          <p className="text-xs text-t-textSecondary leading-relaxed">{report.action}</p>
+        </div>
+        <div className="rounded border border-t-border bg-white/[0.02] p-2">
+          <div className="text-[10px] text-t-textDim mb-1">候选联动</div>
+          <div className="space-y-1">
+            {bestPicks.map(pick => (
+              <div key={pick.code} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="text-t-textBright truncate">{pick.name}</span>
+                <span className="data-num text-t-yellow">{pick.score}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="rounded bg-white/[0.03] p-2">
+      <div className="text-t-textDim">{label}</div>
+      <div className={`data-num font-medium ${color}`}>{value}</div>
+    </div>
+  );
+}
+
 function AuditRow({ item }: { item: SystemAuditItem }) {
   const tone = item.status === 'done'
     ? 'text-t-green bg-t-green/10 border-t-green/25'
@@ -1073,6 +1095,13 @@ function AuditRow({ item }: { item: SystemAuditItem }) {
       <p className="mt-1 text-[11px] text-t-textDim leading-relaxed">{item.detail}</p>
     </div>
   );
+}
+
+function formatDashboardMoneyWan(value: number) {
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  if (abs >= 10000) return `${sign}${(abs / 10000).toFixed(1)}亿`;
+  return `${sign}${abs.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}万`;
 }
 
 function QuoteBlock({ label, value, tone }: { label: string; value: string; tone: string }) {
