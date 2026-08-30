@@ -13,6 +13,10 @@
   "rewrites": [
     { "source": "/analysis", "destination": "/index.html" },
     { "source": "/watchlist", "destination": "/index.html" },
+    { "source": "/valuation", "destination": "/index.html" },
+    { "source": "/comparables", "destination": "/index.html" },
+    { "source": "/versions", "destination": "/index.html" },
+    { "source": "/diligence", "destination": "/index.html" },
     { "source": "/portfolio", "destination": "/index.html" },
     { "source": "/screener", "destination": "/index.html" },
     { "source": "/trades", "destination": "/index.html" },

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { sites } from '@openai/sites-vite-plugin'
 import path from 'path'
 
 // GitHub Pages 部署配置
@@ -10,10 +11,10 @@ const BASE = process.env.GH_PAGES_BASE || '/'
 
 export default defineConfig({
   base: BASE,
-  plugins: [react()],
+  plugins: [react(), sites()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
 })

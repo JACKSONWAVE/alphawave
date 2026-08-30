@@ -1,76 +1,60 @@
-# AlphaWave - 智能波段交易系统
+# AlphaWave Capital Intelligence
 
-个人股票交易平台，专注中期波段操作（持股10天~数月），支持实时行情、技术分析、智能选股、飞书推送。
+面向投行与行业研究场景的公司研究、财务建模、估值与尽调工作台。
 
-## 在线演示
+## 产品定位
 
-https://你的用户名.github.io/alphawave
+AlphaWave Capital Intelligence 将上市公司公开信息、历史财务数据、经营假设和资本市场数据组织成可复核的专业工作流，帮助分析人员完成：
+
+- 公司覆盖与研究项目管理
+- 历史财务重构和五年盈利预测
+- FCFF DCF、WACC、永续增长与敏感性分析
+- Trading Comparables 可比公司估值
+- 财务勾稽、跨文件差异识别和尽调问题跟踪
+- 债务期限、偿债能力与信用风险分析
+- 公告、财报、政策和交易催化剂跟踪
+- 带引用来源的研究底稿生成
+- 模型版本、假设变化和审计记录
+
+## 核心页面
+
+| 路径 | 功能 |
+| --- | --- |
+| `/` | 投融资项目工作台和估值概览 |
+| `/analysis` | 公司研究、业务驱动与盈利预测 |
+| `/watchlist` | 覆盖公司和项目进度 |
+| `/valuation` | 可编辑DCF模型、估值桥接和敏感性矩阵 |
+| `/comparables` | 可比样本筛选和相对估值 |
+| `/intel` | 公告与催化剂雷达 |
+| `/diligence` | 财务核验、尽调和信用分析 |
+| `/versions` | 模型版本与审计记录 |
+| `/feishu` | AI研究助手与引用来源 |
 
 ## 技术栈
 
 - React 19 + TypeScript + Vite
-- Tailwind CSS + shadcn/ui
-- Recharts 图表库
-- 腾讯财经免费API（实时行情）
+- Tailwind CSS
+- Recharts
+- React Router
+- Vercel Functions 与定时任务
 
-## 功能
-
-- 35只股票行情（10只真实K线）
-- 8大技术指标（MA/MACD/RSI/KDJ/BOLL/CCI/WR）
-- 中期波段策略（支撑/压力/目标/止损）
-- 条件策略剧本（买区/突破线/减仓区/止损/目标）
-- 盈亏比、仓位建议、策略触发价与历史信号回测
-- 智能选股器
-- 价格预警
-- 飞书AI助手推送（支持 Vercel 云端定时早盘策略）
-- 交易记录与盈亏统计
-- 节假日智能停刷
-
-## Vercel 飞书定时推送
-
-项目已内置 `/api/feishu-cron` 云端接口，并在 `vercel.json` 配置了工作日早盘推送：
-
-```txt
-01:00 UTC = 北京时间 09:00
-```
-
-在 Vercel Project Settings -> Environment Variables 添加：
-
-```txt
-FEISHU_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/xxxx
-FEISHU_WATCHLIST=603019.SH,002594.SZ,600519.SH
-CRON_SECRET=任意随机字符串
-```
-
-接口支持：
-
-```txt
-/api/feishu-cron?type=morning
-/api/feishu-cron?type=signal
-/api/feishu-cron?type=close
-```
-
-默认只启用每日早盘 Cron，适配 Vercel 个人/Hobby 计划。盘中高频提醒和收盘复盘接口已准备好，升级计划或接入外部定时器后可直接调用。
-
-## 本地运行
+## 本地开发
 
 ```bash
 npm install
 npm run dev
 ```
 
-## 构建
+## 验证与构建
 
 ```bash
-npm run build
+npm run check
 ```
 
-## GitHub Pages 部署
+## 数据说明
 
-```bash
-# 方式1: 项目页面 (username.github.io/alphawave)
-npm run build:gh
+当前专业工作流使用代表性示例模型数据，用于展示研究、估值与尽调方法。正式研究结论应连接已授权的数据源，并逐项核验公司公告、财务报告及模型假设。
 
-# 方式2: 用户页面 (username.github.io)
-GH_PAGES_BASE='/' npm run build
-```
+## 合规说明
+
+平台用于研究流程和模型演示，不构成证券投资建议。AI生成内容不得替代分析师对原始材料、财务口径和估值假设的专业复核。
