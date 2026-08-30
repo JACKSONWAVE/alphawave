@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Area, AreaChart, Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { BookOpenCheck, Building2, CalendarDays, CircleAlert, Lightbulb, TrendingUp } from 'lucide-react';
 import { buildForecast, defaultDcfAssumptions, historicalFinancials } from '../data/advisoryModel';
@@ -24,6 +24,7 @@ const catalysts = [
 
 export default function CompanyResearch() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const code = params.get('code') || '603019.SH';
   const financials = useMemo(() => [...historicalFinancials, ...buildForecast(defaultDcfAssumptions)], []);
 
@@ -31,17 +32,17 @@ export default function CompanyResearch() {
     <div className="mx-auto max-w-[1500px] space-y-4">
       <header className="flex flex-col gap-3 border-b border-t-border pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-t-textDim"><Building2 className="h-4 w-4 text-t-cyan" />公司研究底稿 · TMT / 算力基础设施</div>
+          <div className="flex items-center gap-2 text-xs text-t-textDim"><Building2 className="h-4 w-4 text-t-cyan" />上市公司行研中心 · TMT / 算力基础设施</div>
           <div className="mt-2 flex flex-wrap items-baseline gap-3">
             <h1 className="text-2xl font-semibold text-t-textBright">中科曙光</h1>
             <span className="font-mono text-sm text-t-textDim">{code}</span>
             <span className="rounded-full border border-t-green/30 bg-t-green/10 px-2.5 py-1 text-[11px] text-t-green">重点覆盖</span>
           </div>
-          <p className="mt-2 max-w-3xl text-sm text-t-textDim">AI算力基础设施核心公司 · 历史财务、经营驱动、盈利预测与投资逻辑统一维护</p>
+          <p className="mt-2 max-w-3xl text-sm text-t-textDim">已上市公司案例：服务二级市场行研、资本市场跟踪与可比估值，不作为IPO发行人尽调项目。</p>
         </div>
         <div className="flex gap-2">
-          <button className="rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text hover:border-t-cyan/40">版本对比</button>
-          <button className="rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950">生成公司底稿</button>
+          <button onClick={()=>navigate('/capital/versions')} className="rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text hover:border-t-cyan/40">版本对比</button>
+          <button onClick={()=>navigate('/capital/assistant?mode=listed')} className="rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950">生成公司底稿</button>
         </div>
       </header>
 

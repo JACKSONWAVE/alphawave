@@ -1,4 +1,5 @@
 export type DcfAssumptions = {
+  baseRevenue: number;
   revenueGrowth: number;
   ebitdaMargin: number;
   taxRate: number;
@@ -21,6 +22,7 @@ export type ForecastYear = {
 };
 
 export const defaultDcfAssumptions: DcfAssumptions = {
+  baseRevenue: 171.6,
   revenueGrowth: 0.185,
   ebitdaMargin: 0.156,
   taxRate: 0.18,
@@ -41,7 +43,7 @@ export const historicalFinancials: ForecastYear[] = [
 
 export function buildForecast(assumptions: DcfAssumptions): ForecastYear[] {
   const result: ForecastYear[] = [];
-  let revenue = historicalFinancials[historicalFinancials.length - 1]?.revenue ?? 171.6;
+  let revenue = assumptions.baseRevenue;
   let previousNwc = revenue * assumptions.nwcPct;
 
   for (let index = 0; index < 5; index += 1) {
@@ -114,6 +116,7 @@ export const coverageCompanies = [
 ];
 
 export function median(values: number[]) {
+  if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;

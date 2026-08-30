@@ -23,6 +23,8 @@
     { "source": "/intel", "destination": "/index.html" },
     { "source": "/feishu", "destination": "/index.html" },
     { "source": "/alerts", "destination": "/index.html" },
-    { "source": "/settings", "destination": "/index.html" }
+    { "source": "/settings", "destination": "/index.html" },
+    { "source": "/capital", "destination": "/index.html" },
+    { "source": "/capital/:path*", "destination": "/index.html" }
   ]
 }

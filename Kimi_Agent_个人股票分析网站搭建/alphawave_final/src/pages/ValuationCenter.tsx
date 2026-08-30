@@ -1,10 +1,25 @@
 import { useMemo, useState } from 'react';
-import { Calculator, ChevronDown, CircleDollarSign, RotateCcw, Scale, SlidersHorizontal } from 'lucide-react';
+import { Calculator, ChevronDown, CircleDollarSign, Download, RotateCcw, Scale, SlidersHorizontal } from 'lucide-react';
 import { calculateDcf, comparableCompanies, defaultDcfAssumptions, median, type DcfAssumptions } from '../data/advisoryModel';
+import { downloadCsv } from '../utils/download';
 
-const currentPrice = 41.82;
+const privateCompanyAssumptions: DcfAssumptions = {
+  ...defaultDcfAssumptions,
+  baseRevenue: 28.4,
+  revenueGrowth: 0.239,
+  ebitdaMargin: 0.214,
+  taxRate: 0.15,
+  capexPct: 0.068,
+  nwcPct: 0.1,
+  wacc: 0.105,
+  terminalGrowth: 0.03,
+  shares: 2.4,
+  netDebt: 5.8,
+};
+const primaryRaise = 18;
 
 const assumptionFields: Array<{ key: keyof DcfAssumptions; label: string; suffix: string; step: number; displayPct?: boolean }> = [
+  { key: 'baseRevenue', label: '2025A 营业收入', suffix: '亿', step: 0.1 },
   { key: 'revenueGrowth', label: '收入增速', suffix: '%', step: 0.5, displayPct: true },
   { key: 'ebitdaMargin', label: 'EBITDA Margin', suffix: '%', step: 0.5, displayPct: true },
   { key: 'taxRate', label: '有效税率', suffix: '%', step: 0.5, displayPct: true },
@@ -16,12 +31,30 @@ const assumptionFields: Array<{ key: keyof DcfAssumptions; label: string; suffix
 ];
 
 export default function ValuationCenter() {
-  const [assumptions, setAssumptions] = useState(defaultDcfAssumptions);
+  const [assumptions, setAssumptions] = useState(privateCompanyAssumptions);
+  const [showFormula, setShowFormula] = useState(false);
   const dcf = useMemo(() => calculateDcf(assumptions), [assumptions]);
   const selectedComps = comparableCompanies.filter(item => item.selected && item.code !== '603019.SH');
   const medianEvEbitda = median(selectedComps.map(item => item.evEbitda));
   const medianPe = median(selectedComps.map(item => item.pe));
-  const upside = dcf.pricePerShare / currentPrice - 1;
+  const postMoney = dcf.equityValue + primaryRaise;
+  const issueShares = primaryRaise / dcf.pricePerShare;
+  const dilution = issueShares / (assumptions.shares + issueShares);
+
+  const exportModel = () => downloadCsv('华辰智算_IPO估值底稿.csv', [
+    ['华辰智算科技有限公司', 'IPO交易估值演示'],
+    ['估值口径', '数值'],
+    ['DCF企业价值（亿元）', dcf.enterpriseValue.toFixed(2)],
+    ['Pre-money股权价值（亿元）', dcf.equityValue.toFixed(2)],
+    ['拟募集资金（亿元）', primaryRaise],
+    ['Post-money股权价值（亿元）', postMoney.toFixed(2)],
+    ['隐含发行前每股价值（元）', dcf.pricePerShare.toFixed(2)],
+    ['新股稀释比例', `${(dilution * 100).toFixed(1)}%`],
+    [],
+    ['年份', ...dcf.forecast.map(item => item.year)],
+    ['营业收入', ...dcf.forecast.map(item => item.revenue.toFixed(2))],
+    ['FCFF', ...dcf.forecast.map(item => item.fcff.toFixed(2))],
+  ]);
 
   const setValue = (key: keyof DcfAssumptions, rawValue: number, displayPct?: boolean) => {
     const value = displayPct ? rawValue / 100 : rawValue;
@@ -35,22 +68,22 @@ export default function ValuationCenter() {
     <div className="mx-auto max-w-[1500px] space-y-4">
       <header className="flex flex-col gap-3 border-b border-t-border pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-t-textDim"><Scale className="h-4 w-4 text-t-cyan" />估值中心 · 中科曙光 603019.SH</div>
-          <h1 className="mt-2 text-2xl font-semibold text-t-textBright">DCF 与可比公司估值</h1>
-          <p className="mt-2 text-sm text-t-textDim">调整经营与资本成本假设，模型将同步更新FCFF、企业价值、目标价和敏感性矩阵。</p>
+          <div className="flex items-center gap-2 text-xs text-t-textDim"><Scale className="h-4 w-4 text-t-cyan" />IPO交易估值 · 华辰智算科技有限公司（虚构演示）</div>
+          <h1 className="mt-2 text-2xl font-semibold text-t-textBright">Pre-money、融资与股权稀释模型</h1>
+          <p className="mt-2 text-sm text-t-textDim">DCF用于建立内在价值锚点，再与上市可比公司及先例交易交叉验证；估值结论进入发行规模、价格区间和稀释测算。</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setAssumptions(defaultDcfAssumptions)} className="inline-flex items-center gap-2 rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text"><RotateCcw className="h-3.5 w-3.5" />重置假设</button>
-          <button className="rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950">导出估值底稿</button>
+          <button onClick={() => setAssumptions(privateCompanyAssumptions)} className="inline-flex items-center gap-2 rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text"><RotateCcw className="h-3.5 w-3.5" />重置假设</button>
+          <button onClick={exportModel} className="inline-flex items-center gap-2 rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950"><Download className="h-3.5 w-3.5" />导出估值底稿</button>
         </div>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
-          ['DCF目标价', `¥${dcf.pricePerShare.toFixed(2)}`, `${upside >= 0 ? '+' : ''}${(upside * 100).toFixed(1)}% vs. current`, 'text-t-cyan'],
-          ['企业价值', `¥${dcf.enterpriseValue.toFixed(1)}亿`, 'PV of FCFF + Terminal Value', 'text-t-textBright'],
-          ['股权价值', `¥${dcf.equityValue.toFixed(1)}亿`, `净现金 ${Math.abs(assumptions.netDebt).toFixed(1)}亿`, 'text-t-textBright'],
-          ['终值占比', `${(dcf.terminalValuePct * 100).toFixed(1)}%`, '越低模型可靠性越高', 'text-t-yellow'],
+          ['DCF Pre-money', `¥${dcf.equityValue.toFixed(1)}亿`, `隐含每股 ¥${dcf.pricePerShare.toFixed(2)}`, 'text-t-cyan'],
+          ['拟募集资金', `¥${primaryRaise.toFixed(1)}亿`, '100% Primary Shares', 'text-t-textBright'],
+          ['Post-money', `¥${postMoney.toFixed(1)}亿`, `预计新发 ${issueShares.toFixed(2)}亿股`, 'text-t-textBright'],
+          ['新股稀释', `${(dilution * 100).toFixed(1)}%`, '发行后公众股占比参考', 'text-t-yellow'],
           ['可比EV/EBITDA', `${medianEvEbitda.toFixed(1)}x`, `P/E中位数 ${medianPe.toFixed(1)}x`, 'text-violet-300'],
         ].map(([label, value, detail, color]) => (
           <div key={label} className="panel px-4 py-3.5"><div className="text-[11px] text-t-textDim">{label}</div><div className={`mt-2 font-mono text-xl font-semibold ${color}`}>{value}</div><div className="mt-1 text-[11px] text-t-textDim">{detail}</div></div>
@@ -93,8 +126,9 @@ export default function ValuationCenter() {
           <div className="panel overflow-hidden">
             <div className="flex items-center justify-between border-b border-t-border px-4 py-3">
               <div><h2 className="flex items-center gap-2 text-sm font-semibold text-t-textBright"><Calculator className="h-4 w-4 text-t-cyan" />FCFF预测与折现</h2><p className="mt-1 text-[11px] text-t-textDim">单位：亿元</p></div>
-              <button className="flex items-center gap-1 text-[11px] text-t-textDim">查看公式 <ChevronDown className="h-3.5 w-3.5" /></button>
+              <button onClick={() => setShowFormula(value => !value)} className="flex items-center gap-1 text-[11px] text-t-textDim">{showFormula ? '收起公式' : '查看公式'} <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showFormula ? 'rotate-180' : ''}`} /></button>
             </div>
+            {showFormula && <div className="border-b border-t-border bg-t-cyan/[0.035] px-4 py-3 font-mono text-[11px] leading-5 text-t-textDim">FCFF = EBIT × (1 − Tax Rate) + D&amp;A − CAPEX − ΔNWC；EV = Σ PV(FCFF) + PV(Terminal Value)；Pre-money Equity Value = EV − Net Debt。</div>}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-right text-xs">
                 <thead className="bg-white/[0.02] text-t-textDim"><tr><th className="px-4 py-3 text-left font-medium">项目</th>{dcf.forecast.map(item => <th key={item.year} className="px-4 py-3 font-mono font-medium text-t-cyan">{item.year}</th>)}</tr></thead>
@@ -153,7 +187,7 @@ export default function ValuationCenter() {
                       {growthSteps.map(growth => {
                         const price = calculateDcf({ ...assumptions, wacc, terminalGrowth: growth }).pricePerShare;
                         const isCurrent = Math.abs(offset) < 0.0001 && Math.abs(growth - assumptions.terminalGrowth) < 0.0001;
-                        const relative = price / currentPrice;
+                        const relative = price / dcf.pricePerShare;
                         const color = relative > 1.2 ? 'bg-t-green/20 text-t-green' : relative > 1 ? 'bg-t-cyan/15 text-t-cyan' : 'bg-t-yellow/10 text-t-yellow';
                         return <td key={growth} className={`rounded px-3 py-2 font-mono ${color} ${isCurrent ? 'ring-1 ring-t-textBright' : ''}`}>¥{price.toFixed(2)}</td>;
                       })}

@@ -1,25 +1,27 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { AlertTriangle, CheckCircle2, CircleDashed, FileSearch, Landmark, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CircleDashed, Download, FileSearch, Landmark, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { downloadCsv } from '../utils/download';
 
 const checks = [
-  { category: '财务勾稽', item: '资产 = 负债 + 所有者权益', source: '2025年报 P86–88', status: 'pass', result: '差异 0.00' },
-  { category: '财务勾稽', item: '期末现金跨表核对', source: '2025年报 P88 / P92', status: 'pass', result: '差异 0.00' },
-  { category: '口径核验', item: '资本开支口径一致性', source: '年报 / 募集说明书', status: 'warning', result: '差异 1.26亿' },
-  { category: '异常识别', item: '应收账款增速 vs. 收入增速', source: '附注 P124', status: 'warning', result: '+8.4pct' },
-  { category: '关联交易', item: '前五大客户及关联方核验', source: '年报 P46 / P178', status: 'pass', result: '未见异常' },
+  { category: '财务勾稽', item: '资产 = 负债 + 所有者权益', source: '审计报告 P86–88', status: 'pass', result: '差异 0.00' },
+  { category: '财务勾稽', item: '期末现金跨表核对', source: '审计报告 P88 / P92', status: 'pass', result: '差异 0.00' },
+  { category: '口径核验', item: '资本开支口径一致性', source: '审计底稿 / 申报稿', status: 'warning', result: '差异 0.26亿' },
+  { category: '异常识别', item: '应收账款增速 vs. 收入增速', source: '科目明细 P124', status: 'warning', result: '+8.4pct' },
+  { category: '关联交易', item: '前五大客户及关联方核验', source: '客户流水 / 工商穿透', status: 'pass', result: '未见异常' },
   { category: '材料缺口', item: '2026H1主要合同更新', source: '待发行人补充', status: 'pending', result: '未提供' },
 ];
 
 const debtMaturity = [
-  { year: '2026', amount: 8.4 },
-  { year: '2027', amount: 13.2 },
-  { year: '2028', amount: 6.8 },
-  { year: '2029', amount: 4.5 },
-  { year: '2030+', amount: 9.1 },
+  { year: '2026', amount: 1.4 },
+  { year: '2027', amount: 2.2 },
+  { year: '2028', amount: 1.8 },
+  { year: '2029', amount: 1.1 },
+  { year: '2030+', amount: 0.9 },
 ];
 
 const issues = [
-  { level: '高', title: '资本开支披露口径差异', owner: '财务组', due: '09/02', detail: '募集说明书披露金额较年报现金流量表高1.26亿元，需确认是否包含在建工程转固。' },
+  { level: '高', title: '资本开支披露口径差异', owner: '财务组', due: '09/02', detail: '申报材料披露金额较审计现金流量表高0.26亿元，需确认是否包含在建工程转固。' },
   { level: '中', title: '应收账款增速偏快', owner: '业务组', due: '09/04', detail: '应收账款同比增速高于收入8.4pct，需补充账龄、回款及主要客户信用政策。' },
   { level: '低', title: '重大合同列表待更新', owner: '发行人', due: '09/06', detail: '当前材料仅覆盖至2025年末，需补充2026年新增重大订单与合同执行情况。' },
 ];
@@ -31,23 +33,28 @@ function StatusIcon({ status }: { status: string }) {
 }
 
 export default function DiligenceCenter() {
+  const [activePaper, setActivePaper] = useState<(typeof checks)[number] | null>(null);
+  const exportIssues = () => downloadCsv('华辰智算_IPO尽调问题清单.csv', [
+    ['优先级', '问题', '责任人', '截止日期', '处理要求'],
+    ...issues.map(issue => [issue.level, issue.title, issue.owner, issue.due, issue.detail]),
+  ]);
   return (
     <div className="mx-auto max-w-[1500px] space-y-4">
       <header className="flex flex-col gap-3 border-b border-t-border pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-t-textDim"><ShieldCheck className="h-4 w-4 text-t-cyan" />尽调与质控 · 项目 AWC-2026-03</div>
+          <div className="flex items-center gap-2 text-xs text-t-textDim"><ShieldCheck className="h-4 w-4 text-t-cyan" />华辰智算 · IPO尽调 · 项目 AWC-2026-03（虚构演示）</div>
           <h1 className="mt-2 text-2xl font-semibold text-t-textBright">财务核验与风险工作台</h1>
           <p className="mt-2 text-sm text-t-textDim">交叉核验财报、募集说明书及申报材料，跟踪差异、问题责任人与补充材料。</p>
         </div>
-        <button className="w-fit rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950">生成尽调问题清单</button>
+        <button onClick={exportIssues} className="inline-flex w-fit items-center gap-2 rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950"><Download className="h-3.5 w-3.5" />导出尽调问题清单</button>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
           ['质控检查', '25项', '21项通过', 'text-t-textBright'],
-          ['待解释差异', '2项', '涉及1.26亿元', 'text-t-yellow'],
+          ['待解释差异', '2项', '涉及0.26亿元', 'text-t-yellow'],
           ['材料缺口', '3项', '1项临近截止', 'text-t-yellow'],
-          ['有息负债', '42.0亿', '短债占比 20.0%', 'text-t-textBright'],
+          ['有息负债', '7.4亿', '短债占比 18.9%', 'text-t-textBright'],
           ['利息保障倍数', '8.6x', '压力情景 5.4x', 'text-t-green'],
         ].map(([label, value, detail, color]) => <div key={label} className="panel px-4 py-3.5"><div className="text-[11px] text-t-textDim">{label}</div><div className={`mt-2 font-mono text-xl font-semibold ${color}`}>{value}</div><div className="mt-1 text-[11px] text-t-textDim">{detail}</div></div>)}
       </section>
@@ -68,13 +75,15 @@ export default function DiligenceCenter() {
                   <td className="px-4 py-3 font-medium text-t-text">{check.item}</td>
                   <td className="px-4 py-3 text-t-textDim">{check.source}</td>
                   <td className={`px-4 py-3 font-mono ${check.status === 'pass' ? 'text-t-green' : check.status === 'warning' ? 'text-t-yellow' : 'text-t-textDim'}`}>{check.result}</td>
-                  <td className="px-4 py-3"><button className="text-t-cyan hover:text-cyan-300">查看底稿</button></td>
+                  <td className="px-4 py-3"><button onClick={() => setActivePaper(check)} className="text-t-cyan hover:text-cyan-300">查看底稿</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+
+      {activePaper && <section className="rounded-lg border border-t-cyan/30 bg-t-cyan/[0.035] p-4"><div className="flex items-start justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.16em] text-t-cyan">核验底稿预览</div><h2 className="mt-2 text-sm font-semibold text-t-textBright">{activePaper.item}</h2><p className="mt-2 text-xs leading-5 text-t-textDim">来源：{activePaper.source}。检查结果为“{activePaper.result}”。演示版已保留来源定位、复核状态与问题关联；实际项目应接入电子底稿和权限审计。</p></div><button onClick={() => setActivePaper(null)} className="text-xs text-t-textDim hover:text-t-text">关闭</button></div></section>}
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="panel overflow-hidden">
