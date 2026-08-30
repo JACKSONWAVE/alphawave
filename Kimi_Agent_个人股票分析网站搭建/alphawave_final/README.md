@@ -1,60 +1,49 @@
-# AlphaWave Capital Intelligence
+# AlphaWave — Valuation & Equity Research Modeling
 
-面向投行与行业研究场景的公司研究、财务建模、估值与尽调工作台。
+AlphaWave 是一个将个人交易终端与专业估值、行研建模分开的双工作区项目。专业建模工作区以中科曙光（603019.SH）为核心案例，展示从经营驱动、三表预测到DCF、可比公司估值和目标价推导的完整逻辑链。
 
-## 产品定位
+## 核心建模能力
 
-AlphaWave Capital Intelligence 将上市公司公开信息、历史财务数据、经营假设和资本市场数据组织成可复核的专业工作流，帮助分析人员完成：
+- 2022A–2024A历史财务、2025A*业绩快报与2026E–2030E预测
+- IT设备与软件服务分业务收入驱动
+- 毛利率、研发费用、SG&A、CAPEX和营运资金假设
+- 利润表、资产负债表与现金流量表自动联动和平衡检查
+- FCFF DCF、WACC、永续增长率和EV到Equity Value桥接
+- Trading Comparables、SOTP与Valuation Football Field
+- Bear / Base / Bull情景和目标价敏感性分析
+- 行研投资逻辑、盈利预测、催化剂、风险及预期差
 
-- 公司覆盖与研究项目管理
-- 历史财务重构和五年盈利预测
-- FCFF DCF、WACC、永续增长与敏感性分析
-- Trading Comparables 可比公司估值
-- 财务勾稽、跨文件差异识别和尽调问题跟踪
-- 债务期限、偿债能力与信用风险分析
-- 公告、财报、政策和交易催化剂跟踪
-- 带引用来源的研究底稿生成
-- 模型版本、假设变化和审计记录
-
-## 核心页面
+## 页面结构
 
 | 路径 | 功能 |
 | --- | --- |
-| `/` | 投融资项目工作台和估值概览 |
-| `/analysis` | 公司研究、业务驱动与盈利预测 |
-| `/watchlist` | 覆盖公司和项目进度 |
-| `/valuation` | 可编辑DCF模型、估值桥接和敏感性矩阵 |
-| `/comparables` | 可比样本筛选和相对估值 |
-| `/intel` | 公告与催化剂雷达 |
-| `/diligence` | 财务核验、尽调和信用分析 |
-| `/versions` | 模型版本与审计记录 |
-| `/feishu` | AI研究助手与引用来源 |
+| `/` | 原个人交易终端 |
+| `/capital` | 专业建模Model Hub |
+| `/capital/model` | 经营驱动与三表模型 |
+| `/capital/valuation` | DCF、SOTP、估值足球场及敏感性 |
+| `/capital/comparables` | 上市可比公司筛选与相对估值 |
+| `/capital/research` | 中科曙光Equity Research案例 |
+| `/capital/versions` | Bear / Base / Bull情景分析 |
+
+## 数据口径
+
+2022A–2024A主要历史数据取自公司2024年年度报告；2025A*收入、净利润、总资产和股东权益取自2025年度业绩快报，尚未经审计。2025分部拆分、经营现金流及2026E–2030E均为AlphaWave模型估计。
+
+本项目用于展示财务建模与行业研究方法，不构成投资建议。
 
 ## 技术栈
 
-- React 19 + TypeScript + Vite
-- Tailwind CSS
-- Recharts
-- React Router
-- Vercel Functions 与定时任务
+React 19、TypeScript、Vite、Tailwind CSS、Recharts、React Router。
 
-## 本地开发
+## 本地运行
 
 ```bash
 npm install
 npm run dev
 ```
 
-## 验证与构建
+验证生产构建：
 
 ```bash
 npm run check
 ```
-
-## 数据说明
-
-当前专业工作流使用代表性示例模型数据，用于展示研究、估值与尽调方法。正式研究结论应连接已授权的数据源，并逐项核验公司公告、财务报告及模型假设。
-
-## 合规说明
-
-平台用于研究流程和模型演示，不构成证券投资建议。AI生成内容不得替代分析师对原始材料、财务口径和估值假设的专业复核。

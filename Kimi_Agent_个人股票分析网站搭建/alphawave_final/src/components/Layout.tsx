@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BarChart3, Star, Settings, Search, Bot, Newspaper, BriefcaseBusiness, FileCheck2, GitBranch, Scale, WalletCards, SlidersHorizontal, ArrowLeftRight, Bell, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Star, Settings, Search, Newspaper, BriefcaseBusiness, Scale, WalletCards, SlidersHorizontal, ArrowLeftRight, Bell, ChevronDown, TableProperties } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { coverageCompanies } from '../data/advisoryModel';
@@ -15,14 +15,12 @@ const tradingNav = [
 ];
 
 const capitalNav = [
-  { to: '/capital', icon: LayoutDashboard, label: '项目工作台' },
-  { to: '/capital/diligence', icon: FileCheck2, label: 'IPO尽调与核验' },
-  { to: '/capital/valuation', icon: Scale, label: '交易估值模型' },
-  { to: '/capital/comparables', icon: BriefcaseBusiness, label: '可比与先例交易' },
-  { to: '/capital/coverage', icon: Star, label: '项目管线' },
-  { to: '/capital/research', icon: BarChart3, label: '上市公司行研' },
-  { to: '/capital/intel', icon: Newspaper, label: '公告与行业情报' },
-  { to: '/capital/versions', icon: GitBranch, label: '底稿与版本' },
+  { to: '/capital', icon: LayoutDashboard, label: 'Model Hub' },
+  { to: '/capital/model', icon: TableProperties, label: '经营驱动与三表' },
+  { to: '/capital/valuation', icon: Scale, label: 'Valuation Lab' },
+  { to: '/capital/comparables', icon: BriefcaseBusiness, label: '可比公司' },
+  { to: '/capital/research', icon: BarChart3, label: 'Equity Research' },
+  { to: '/capital/versions', icon: SlidersHorizontal, label: '情景与版本' },
 ];
 
 export default function Layout() {
@@ -65,7 +63,7 @@ export default function Layout() {
           {!collapsed && (
             <div className="min-w-0">
               <div className="truncate text-sm font-bold tracking-tight text-t-textBright">AlphaWave</div>
-              <div className="truncate text-[9px] uppercase tracking-[0.16em] text-t-cyan">{isCapital ? 'Capital Advisory' : 'Trading Terminal'}</div>
+              <div className="truncate text-[9px] uppercase tracking-[0.16em] text-t-cyan">{isCapital ? 'Valuation Research' : 'Trading Terminal'}</div>
             </div>
           )}
         </div>
@@ -77,7 +75,7 @@ export default function Layout() {
             >
               <span>
                 <span className="block text-[10px] text-t-textDim">当前工作区</span>
-                <span className="mt-0.5 block text-xs font-medium text-t-text">{isCapital ? '投行项目与估值' : '个人交易与持仓'}</span>
+                <span className="mt-0.5 block text-xs font-medium text-t-text">{isCapital ? '估值与行研建模' : '个人交易与持仓'}</span>
               </span>
               <ChevronDown className="h-3.5 w-3.5 text-t-cyan" />
             </button>
@@ -85,7 +83,7 @@ export default function Layout() {
         )}
         <nav className="flex-1 py-2 space-y-0.5">
           {navItems.map(item => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({ isActive }) =>
+            <NavLink key={item.to} to={item.to} end={item.to === '/' || item.to === '/capital'} className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2 mx-1.5 rounded-md text-sm transition-colors relative ${isActive ? 'bg-t-blue/15 text-t-blue border-l-2 border-t-blue' : 'text-t-textDim hover:text-t-text hover:bg-t-panelHover'}`
             }>
               <item.icon className="w-4 h-4 flex-shrink-0" />
@@ -94,12 +92,12 @@ export default function Layout() {
           ))}
         </nav>
         <div className="border-t border-t-border py-2 space-y-0.5">
-          <NavLink to={isCapital ? '/capital/assistant' : '/feishu'} className={({ isActive }) =>
+          {!isCapital && <NavLink to="/feishu" className={({ isActive }) =>
             `flex items-center gap-3 px-3 py-2 mx-1.5 rounded-md text-sm transition-colors ${isActive ? 'bg-t-green/15 text-t-green border-l-2 border-t-green' : 'text-t-textDim hover:text-t-text hover:bg-t-panelHover'}`
           }>
-            <Bot className="w-4 h-4 flex-shrink-0" />
-            {!collapsed && <span>{isCapital ? 'AI项目助手' : '飞书助手'}</span>}
-          </NavLink>
+            <BriefcaseBusiness className="w-4 h-4 flex-shrink-0" />
+            {!collapsed && <span>飞书助手</span>}
+          </NavLink>}
           {!isCapital && <NavLink to="/alerts" className={({ isActive }) =>
             `flex items-center gap-3 px-3 py-2 mx-1.5 rounded-md text-sm transition-colors ${isActive ? 'bg-t-yellow/15 text-t-yellow' : 'text-t-textDim hover:text-t-text hover:bg-t-panelHover'}`
           }>
@@ -150,14 +148,14 @@ export default function Layout() {
             )}
           </div>
           {isCapital ? <div className="hidden items-center gap-4 text-xs md:flex">
-            <span><span className="text-t-textDim">覆盖公司</span> <strong className="font-mono font-medium text-t-text">5</strong></span>
-            <span><span className="text-t-textDim">待复核</span> <strong className="font-mono font-medium text-t-yellow">3</strong></span>
-            <span><span className="text-t-textDim">模型完整度</span> <strong className="font-mono font-medium text-t-cyan">84%</strong></span>
+            <span><span className="text-t-textDim">核心案例</span> <strong className="font-mono font-medium text-t-text">中科曙光</strong></span>
+            <span><span className="text-t-textDim">预测期</span> <strong className="font-mono font-medium text-t-yellow">2026E–2030E</strong></span>
+            <span><span className="text-t-textDim">三表检查</span> <strong className="font-mono font-medium text-t-green">PASS</strong></span>
           </div> : <div className="hidden items-center gap-4 text-xs md:flex"><span className="text-t-textDim">市场状态 <strong className="ml-1 font-medium text-t-green">交易中</strong></span><span className="text-t-textDim">数据 <strong className="ml-1 font-medium text-t-cyan">已同步</strong></span></div>}
         </header>
         <nav className="flex gap-1 overflow-x-auto border-b border-t-border bg-t-panel px-2 py-1.5 lg:hidden scrollbar-thin">
           {navItems.map(item => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({ isActive }) =>
+            <NavLink key={item.to} to={item.to} end={item.to === '/' || item.to === '/capital'} className={({ isActive }) =>
               `flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-2 text-[11px] ${isActive ? 'bg-t-cyan/10 text-t-cyan' : 'text-t-textDim'}`
             }>
               <item.icon className="h-3.5 w-3.5" />{item.label}

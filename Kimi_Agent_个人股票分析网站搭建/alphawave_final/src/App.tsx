@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import Layout from './components/Layout';
+import { ResearchModelProvider } from './context/ResearchModelContext';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Analysis = lazy(() => import('./pages/Analysis'));
@@ -13,18 +14,15 @@ const Alerts = lazy(() => import('./pages/Alerts'));
 const FeishuSettings = lazy(() => import('./pages/FeishuSettings'));
 const AdvisoryDashboard = lazy(() => import('./pages/AdvisoryDashboard'));
 const CompanyResearch = lazy(() => import('./pages/CompanyResearch'));
-const CoveragePipeline = lazy(() => import('./pages/CoveragePipeline'));
 const ValuationCenter = lazy(() => import('./pages/ValuationCenter'));
 const ComparableCompanies = lazy(() => import('./pages/ComparableCompanies'));
 const ModelVersions = lazy(() => import('./pages/ModelVersions'));
-const DiligenceCenter = lazy(() => import('./pages/DiligenceCenter'));
-const ResearchAssistant = lazy(() => import('./pages/ResearchAssistant'));
-const CatalystRadar = lazy(() => import('./pages/CatalystRadar'));
 const Settings = lazy(() => import('./pages/Settings'));
+const OperatingModel = lazy(() => import('./pages/OperatingModel'));
 
 function App() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-t-bg text-sm text-t-textDim">正在载入研究工作台…</div>}>
+    <ResearchModelProvider><Suspense fallback={<div className="flex h-screen items-center justify-center bg-t-bg text-sm text-t-textDim">正在载入研究工作台…</div>}>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
@@ -39,14 +37,15 @@ function App() {
           <Route path="/settings" element={<Settings />} />
 
           <Route path="/capital" element={<AdvisoryDashboard />} />
+          <Route path="/capital/model" element={<OperatingModel />} />
           <Route path="/capital/research" element={<CompanyResearch />} />
-          <Route path="/capital/coverage" element={<CoveragePipeline />} />
+          <Route path="/capital/coverage" element={<Navigate to="/capital/model" replace />} />
           <Route path="/capital/valuation" element={<ValuationCenter />} />
           <Route path="/capital/comparables" element={<ComparableCompanies />} />
           <Route path="/capital/versions" element={<ModelVersions />} />
-          <Route path="/capital/diligence" element={<DiligenceCenter />} />
-          <Route path="/capital/intel" element={<CatalystRadar />} />
-          <Route path="/capital/assistant" element={<ResearchAssistant />} />
+          <Route path="/capital/diligence" element={<Navigate to="/capital/model" replace />} />
+          <Route path="/capital/intel" element={<Navigate to="/capital/research" replace />} />
+          <Route path="/capital/assistant" element={<Navigate to="/capital/research" replace />} />
           <Route path="/capital/settings" element={<Settings />} />
           <Route path="/valuation" element={<Navigate to="/capital/valuation" replace />} />
           <Route path="/comparables" element={<Navigate to="/capital/comparables" replace />} />
@@ -55,7 +54,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-    </Suspense>
+    </Suspense></ResearchModelProvider>
   );
 }
 

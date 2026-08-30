@@ -1,13 +1,12 @@
-import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Area, AreaChart, Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { BookOpenCheck, Building2, CalendarDays, CircleAlert, Lightbulb, TrendingUp } from 'lucide-react';
-import { buildForecast, defaultDcfAssumptions, historicalFinancials } from '../data/advisoryModel';
+import { historicalSummary } from '../data/researchModel';
+import { useResearchModel } from '../context/ResearchModelContext';
 
 const businessSegments = [
-  { name: '高端计算机', revenue: 96.4, growth: 21.8, margin: 18.2, share: 56 },
-  { name: '存储与云计算', revenue: 44.8, growth: 16.5, margin: 14.7, share: 26 },
-  { name: '软件与服务', revenue: 30.4, growth: 11.2, margin: 31.6, share: 18 },
+  { name: 'IT设备', revenue: 133.6, growth: 16.0, margin: 28.5, share: 89.2, driver: '出货量 × ASP × 产品结构' },
+  { name: '软件开发、系统集成及技术服务', revenue: 16.1, growth: 20.0, margin: 41.0, share: 10.8, driver: '项目数量 × 客单价 × 服务占比' },
 ];
 
 const thesis = [
@@ -26,7 +25,12 @@ export default function CompanyResearch() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const code = params.get('code') || '603019.SH';
-  const financials = useMemo(() => [...historicalFinancials, ...buildForecast(defaultDcfAssumptions)], []);
+  const { model, dcf, scenario } = useResearchModel();
+  const financials = [
+    ...historicalSummary.map(item => ({ ...item, ebitda: item.netIncome * 1.35, fcff: item.cfo * 0.55 })),
+    ...model,
+  ];
+  const firstYear = model[0];
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-4">
@@ -38,7 +42,7 @@ export default function CompanyResearch() {
             <span className="font-mono text-sm text-t-textDim">{code}</span>
             <span className="rounded-full border border-t-green/30 bg-t-green/10 px-2.5 py-1 text-[11px] text-t-green">重点覆盖</span>
           </div>
-          <p className="mt-2 max-w-3xl text-sm text-t-textDim">已上市公司案例：服务二级市场行研、资本市场跟踪与可比估值，不作为IPO发行人尽调项目。</p>
+          <p className="mt-2 max-w-3xl text-sm text-t-textDim">上市公司完整案例：经营驱动、三表预测、盈利变化、预期差和目标价推导统一联动。</p>
         </div>
         <div className="flex gap-2">
           <button onClick={()=>navigate('/capital/versions')} className="rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text hover:border-t-cyan/40">版本对比</button>
@@ -48,12 +52,12 @@ export default function CompanyResearch() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {[
-          ['2026E 收入', '203.3亿', '+18.5%'],
-          ['2026E EBITDA', '31.8亿', '15.6% margin'],
-          ['2026E 净利润', '25.8亿', '+15.7%'],
-          ['净现金', '42.6亿', '资产负债表稳健'],
-          ['DCF目标价', '48.60', '+16.2% upside'],
-          ['模型置信度', '84 / 100', '21项检查通过'],
+          ['2026E 收入', `${firstYear.revenue.toFixed(1)}亿`, `+${(firstYear.growth*100).toFixed(1)}%`],
+          ['2026E EBITDA', `${firstYear.ebitda.toFixed(1)}亿`, `${(firstYear.ebitda/firstYear.revenue*100).toFixed(1)}% margin`],
+          ['2026E 净利润', `${firstYear.netIncome.toFixed(1)}亿`, `${(firstYear.netIncome/21.13-1)*100>=0?'+':''}${((firstYear.netIncome/21.13-1)*100).toFixed(1)}%`],
+          ['2026E EPS', `¥${firstYear.eps.toFixed(2)}`, `${scenario.toUpperCase()} case`],
+          ['DCF目标价', `¥${dcf.pricePerShare.toFixed(2)}`, '经营模型联动'],
+          ['三表检查', `${Math.abs(firstYear.balanceCheck).toFixed(2)}`, '资产−负债−权益'],
         ].map(([label, value, detail]) => (
           <div key={label} className="panel px-4 py-3">
             <div className="text-[11px] text-t-textDim">{label}</div>
@@ -67,7 +71,7 @@ export default function CompanyResearch() {
         <div className="panel p-4">
           <div className="mb-4 flex items-center justify-between">
             <div><h2 className="text-sm font-semibold text-t-textBright">历史表现与盈利预测</h2><p className="mt-1 text-xs text-t-textDim">2022A–2030E · 单位：亿元</p></div>
-            <span className="rounded border border-t-border px-2 py-1 text-[10px] text-t-textDim">Base Case</span>
+            <span className="rounded border border-t-border px-2 py-1 text-[10px] text-t-textDim">{scenario.toUpperCase()} Case</span>
           </div>
           <div className="h-[330px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -117,7 +121,7 @@ export default function CompanyResearch() {
                     <td className="px-4 py-3"><div className="flex items-center gap-2"><div className="h-1.5 w-16 rounded bg-white/[0.05]"><div className="h-full rounded bg-t-blue" style={{ width: `${segment.share}%` }} /></div><span className="font-mono text-t-textDim">{segment.share}%</span></div></td>
                     <td className="px-4 py-3 font-mono text-t-green">+{segment.growth.toFixed(1)}%</td>
                     <td className="px-4 py-3 font-mono text-t-text">{segment.margin.toFixed(1)}%</td>
-                    <td className="px-4 py-3 text-t-textDim">销量 × 单价 × 产品结构</td>
+                    <td className="px-4 py-3 text-t-textDim">{segment.driver}</td>
                   </tr>
                 ))}
               </tbody>
