@@ -14,6 +14,7 @@ AlphaWave 是一个将个人交易终端与专业估值、行研建模分开的�
 - Bear / Base / Bull情景和目标价敏感性分析
 - 工信部公开数据、行业景气跟踪框架及可比公司选择逻辑
 - 行研投资逻辑、盈利预测、催化剂、风险及预期差
+- 财报本地解析、候选数据人工复核、来源定位与模型解释Agent
 
 ## 页面结构
 
@@ -25,6 +26,7 @@ AlphaWave 是一个将个人交易终端与专业估值、行研建模分开的�
 | `/capital/valuation` | DCF、SOTP、估值足球场及敏感性 |
 | `/capital/comparables` | 上市可比公司筛选与相对估值 |
 | `/capital/research` | 中科曙光Equity Research案例 |
+| `/capital/assistant` | 财报提取、人工复核与模型解释Agent |
 | `/capital/versions` | Bear / Base / Bull情景分析 |
 
 ## 数据口径

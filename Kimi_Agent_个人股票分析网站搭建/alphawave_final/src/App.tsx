@@ -19,6 +19,7 @@ const ComparableCompanies = lazy(() => import('./pages/ComparableCompanies'));
 const ModelVersions = lazy(() => import('./pages/ModelVersions'));
 const Settings = lazy(() => import('./pages/Settings'));
 const OperatingModel = lazy(() => import('./pages/OperatingModel'));
+const ResearchAssistant = lazy(() => import('./pages/ResearchAgent'));
 
 function App() {
   return (
@@ -45,7 +46,7 @@ function App() {
           <Route path="/capital/versions" element={<ModelVersions />} />
           <Route path="/capital/diligence" element={<Navigate to="/capital/model" replace />} />
           <Route path="/capital/intel" element={<Navigate to="/capital/research" replace />} />
-          <Route path="/capital/assistant" element={<Navigate to="/capital/research" replace />} />
+          <Route path="/capital/assistant" element={<ResearchAssistant />} />
           <Route path="/capital/settings" element={<Settings />} />
           <Route path="/valuation" element={<Navigate to="/capital/valuation" replace />} />
           <Route path="/comparables" element={<Navigate to="/capital/comparables" replace />} />

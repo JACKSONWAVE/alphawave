@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BarChart3, Star, Settings, Search, Newspaper, BriefcaseBusiness, Scale, WalletCards, SlidersHorizontal, ArrowLeftRight, Bell, ChevronDown, TableProperties } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Star, Settings, Search, Newspaper, BriefcaseBusiness, Scale, WalletCards, SlidersHorizontal, ArrowLeftRight, Bell, ChevronDown, TableProperties, Bot } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { coverageCompanies } from '../data/advisoryModel';
@@ -20,6 +20,7 @@ const capitalNav = [
   { to: '/capital/valuation', icon: Scale, label: 'Valuation Lab' },
   { to: '/capital/comparables', icon: BriefcaseBusiness, label: '可比公司' },
   { to: '/capital/research', icon: BarChart3, label: 'Equity Research' },
+  { to: '/capital/assistant', icon: Bot, label: 'Research Agent' },
   { to: '/capital/versions', icon: SlidersHorizontal, label: '情景与版本' },
 ];
 
