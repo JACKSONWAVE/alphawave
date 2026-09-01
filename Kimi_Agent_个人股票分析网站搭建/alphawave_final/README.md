@@ -9,8 +9,10 @@ AlphaWave 是一个将个人交易终端与专业估值、行研建模分开的�
 - 毛利率、研发费用、SG&A、CAPEX和营运资金假设
 - 利润表、资产负债表与现金流量表自动联动和平衡检查
 - FCFF DCF、WACC、永续增长率和EV到Equity Value桥接
+- WACC拆解、5×5双因素敏感性矩阵及单元格交互解释
 - Trading Comparables、SOTP与Valuation Football Field
 - Bear / Base / Bull情景和目标价敏感性分析
+- 工信部公开数据、行业景气跟踪框架及可比公司选择逻辑
 - 行研投资逻辑、盈利预测、催化剂、风险及预期差
 
 ## 页面结构

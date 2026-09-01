@@ -89,6 +89,22 @@ export const defaultOperatingAssumptions: OperatingAssumptions = {
   netDebt: -45.0,
 };
 
+export const waccInputs = {
+  riskFreeRate: 0.023,
+  beta: 1.14,
+  equityRiskPremium: 0.062,
+  preTaxCostDebt: 0.034,
+  debtWeight: 0.10,
+};
+
+export function calculateWaccBuild(taxRate: number) {
+  const costEquity = waccInputs.riskFreeRate + waccInputs.beta * waccInputs.equityRiskPremium;
+  const equityWeight = 1 - waccInputs.debtWeight;
+  const afterTaxCostDebt = waccInputs.preTaxCostDebt * (1 - taxRate);
+  const calculatedWacc = costEquity * equityWeight + afterTaxCostDebt * waccInputs.debtWeight;
+  return { ...waccInputs, costEquity, equityWeight, afterTaxCostDebt, calculatedWacc };
+}
+
 export const scenarioPresets: Record<ModelScenario, OperatingAssumptions> = {
   bear: { ...defaultOperatingAssumptions, itGrowth: 0.09, servicesGrowth: 0.12, itGrossMargin: 0.265, servicesGrossMargin: 0.38, rdPct: 0.098, wacc: 0.097, terminalGrowth: 0.02 },
   base: defaultOperatingAssumptions,
@@ -195,7 +211,7 @@ export function calculateResearchDcf(assumptions: OperatingAssumptions) {
 }
 
 export const modelSources = [
-  { label: '2024年年度报告', detail: '2022A–2024A收入、净利润、经营现金流及2024产品分部' },
-  { label: '2025年度业绩快报', detail: '2025A*收入、净利润、总资产和股东权益；未经审计' },
+  { label: '2024年年度报告', detail: '2022A–2024A收入、净利润、经营现金流及2024产品分部', url: 'https://big5.sse.com.cn/site/cht/www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2025-03-05/603019_20250305_LPGP.pdf' },
+  { label: '2025年度业绩快报', detail: '2025A*收入、净利润、总资产和股东权益；未经审计', url: 'https://big5.sse.com.cn/site/cht/www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-02-25/603019_20260225_3DJH.pdf' },
   { label: 'AlphaWave预测假设', detail: '2025产品拆分及2026E–2030E均为模型估计' },
 ];

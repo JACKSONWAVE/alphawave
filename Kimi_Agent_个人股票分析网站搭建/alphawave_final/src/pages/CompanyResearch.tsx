@@ -2,12 +2,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Area, AreaChart, Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { BookOpenCheck, Building2, CalendarDays, CircleAlert, Lightbulb, TrendingUp } from 'lucide-react';
 import { historicalSummary } from '../data/researchModel';
+import { industryMetrics, industryTrackers } from '../data/industryResearch';
 import { useResearchModel } from '../context/ResearchModelContext';
-
-const businessSegments = [
-  { name: 'IT设备', revenue: 133.6, growth: 16.0, margin: 28.5, share: 89.2, driver: '出货量 × ASP × 产品结构' },
-  { name: '软件开发、系统集成及技术服务', revenue: 16.1, growth: 20.0, margin: 41.0, share: 10.8, driver: '项目数量 × 客单价 × 服务占比' },
-];
 
 const thesis = [
   '算力基础设施投资维持高景气，服务器及液冷相关需求为收入增长的主要驱动。',
@@ -25,12 +21,16 @@ export default function CompanyResearch() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const code = params.get('code') || '603019.SH';
-  const { model, dcf, scenario } = useResearchModel();
+  const { model, dcf, scenario, assumptions } = useResearchModel();
   const financials = [
     ...historicalSummary.map(item => ({ ...item, ebitda: item.netIncome * 1.35, fcff: item.cfo * 0.55 })),
     ...model,
   ];
   const firstYear = model[0];
+  const businessSegments = [
+    { name: 'IT设备', revenue: firstYear.itRevenue, growth: assumptions.itGrowth * 100, margin: assumptions.itGrossMargin * 100, share: firstYear.itRevenue / firstYear.revenue * 100, driver: '出货量 × ASP × 产品结构' },
+    { name: '软件开发、系统集成及技术服务', revenue: firstYear.servicesRevenue, growth: assumptions.servicesGrowth * 100, margin: assumptions.servicesGrossMargin * 100, share: firstYear.servicesRevenue / firstYear.revenue * 100, driver: '项目数量 × 客单价 × 服务占比' },
+  ];
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-4">
@@ -42,11 +42,11 @@ export default function CompanyResearch() {
             <span className="font-mono text-sm text-t-textDim">{code}</span>
             <span className="rounded-full border border-t-green/30 bg-t-green/10 px-2.5 py-1 text-[11px] text-t-green">重点覆盖</span>
           </div>
-          <p className="mt-2 max-w-3xl text-sm text-t-textDim">上市公司完整案例：经营驱动、三表预测、盈利变化、预期差和目标价推导统一联动。</p>
+          <p className="mt-2 max-w-3xl text-sm text-t-textDim">从行业规模与景气指标出发，落到公司业务拆分、盈利预测、估值结论和风险判断。</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={()=>navigate('/capital/versions')} className="rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text hover:border-t-cyan/40">版本对比</button>
-          <button onClick={()=>navigate('/capital/assistant?mode=listed')} className="rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950">生成公司底稿</button>
+          <button onClick={()=>navigate('/capital/model')} className="rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text hover:border-t-cyan/40">查看三表模型</button>
+          <button onClick={()=>navigate('/capital/valuation')} className="rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950">查看估值分析</button>
         </div>
       </header>
 
@@ -66,6 +66,15 @@ export default function CompanyResearch() {
           </div>
         ))}
       </section>
+
+      <section className="panel overflow-hidden">
+        <div className="border-b border-t-border px-4 py-3"><h2 className="text-sm font-semibold text-t-textBright">算力基础设施行业锚点</h2><p className="mt-1 text-[11px] text-t-textDim">采用官方公开口径；点击来源可回溯原始材料</p></div>
+        <div className="grid gap-px bg-t-border sm:grid-cols-2 xl:grid-cols-4">
+          {industryMetrics.map(item => <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="bg-t-panel p-4 hover:bg-t-panelHover"><div className="flex items-start justify-between gap-3"><span className="text-[10px] text-t-textDim">{item.label}</span><span className="text-[9px] text-t-cyan">来源 ↗</span></div><div className="mt-2 font-mono text-xl font-semibold text-t-textBright">{item.value}</div><div className="mt-1 text-[10px] text-t-yellow">{item.period}</div><p className="mt-3 text-[10px] leading-4 text-t-textDim">{item.interpretation}</p><div className="mt-2 text-[9px] text-t-textDim">{item.source}</div></a>)}
+        </div>
+      </section>
+
+      <section className="panel overflow-hidden"><div className="border-b border-t-border px-4 py-3"><h2 className="text-sm font-semibold text-t-textBright">行业景气跟踪框架</h2><p className="mt-1 text-[11px] text-t-textDim">每个指标都对应一个需要验证的研究问题</p></div><div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-xs"><thead className="bg-white/[0.02] text-t-textDim"><tr>{['维度','跟踪指标','研究问题'].map(item=><th key={item} className="px-4 py-3 font-medium">{item}</th>)}</tr></thead><tbody className="divide-y divide-t-border">{industryTrackers.map(item=><tr key={item.name}><td className="px-4 py-3 font-medium text-t-cyan">{item.name}</td><td className="px-4 py-3 text-t-text">{item.metrics}</td><td className="px-4 py-3 text-t-textDim">{item.question}</td></tr>)}</tbody></table></div></section>
 
       <section className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
         <div className="panel p-4">
@@ -112,7 +121,7 @@ export default function CompanyResearch() {
           <div className="border-b border-t-border px-4 py-3"><h2 className="text-sm font-semibold text-t-textBright">业务分部与经营驱动</h2></div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[680px] text-left text-xs">
-              <thead className="bg-white/[0.02] text-t-textDim"><tr>{['业务分部', '2025A收入', '收入占比', '同比增速', '毛利率', '核心驱动'].map(item => <th key={item} className="px-4 py-3 font-medium">{item}</th>)}</tr></thead>
+              <thead className="bg-white/[0.02] text-t-textDim"><tr>{['业务分部', '2026E收入', '收入占比', '预测增速', '预测毛利率', '核心驱动'].map(item => <th key={item} className="px-4 py-3 font-medium">{item}</th>)}</tr></thead>
               <tbody className="divide-y divide-t-border">
                 {businessSegments.map(segment => (
                   <tr key={segment.name} className="hover:bg-white/[0.015]">
