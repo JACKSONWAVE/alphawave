@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Calculator, CheckCircle2, Database, Download, RotateCcw, Sigma, TableProperties } from 'lucide-react';
 import { getHistoricalSummary, modelSources, type ModelYear, type OperatingAssumptions } from '../data/researchModel';
 import { useResearchModel } from '../context/ResearchModelContext';
-import { downloadCsv } from '../utils/download';
+import { downloadXlsx } from '../utils/download';
 
 type Statement = 'income' | 'balance' | 'cashflow';
 type Row = { label: string; key?: keyof ModelYear; values?: number[]; ratio?: boolean; emphasis?: boolean; subtract?: boolean; };
@@ -24,7 +24,7 @@ const scenarioLabels = { bear: 'Bear', base: 'Base', bull: 'Bull' } as const;
 const formatNumber = (value: number) => `${value < 0 ? '(' : ''}${Math.abs(value).toFixed(1)}${value < 0 ? ')' : ''}`;
 
 export default function OperatingModel() {
-  const { assumptions, scenario, historicalAnchor, modelStart, modelVersions, model, updateAssumption, setScenario, resetModel } = useResearchModel();
+  const { assumptions, scenario, historicalAnchor, modelStart, modelVersions, model, dcf, updateAssumption, setScenario, resetModel } = useResearchModel();
   const [statement, setStatement] = useState<Statement>('income');
   const lastYear = model[model.length - 1];
   const revenueCagr = (lastYear.revenue / modelStart.revenue) ** (1 / 5) - 1;
@@ -89,21 +89,54 @@ export default function OperatingModel() {
     ],
   }), []);
 
-  const exportModel = () => downloadCsv('中科曙光_经营驱动及三表模型.csv', [
-    ['中科曙光 603019.SH', '单位：亿元，除EPS和比率外'],
-    ['模型情景', scenarioLabels[scenario]],
-    ['项目', ...model.map(item => item.year)],
-    ...rows.income.map(row => [row.label, ...model.map(item => row.ratio ? `${((item[row.key!] as number) * 100).toFixed(1)}%` : (item[row.key!] as number).toFixed(2))]),
-    [],
-    ...rows.balance.map(row => [row.label, ...model.map(item => (item[row.key!] as number).toFixed(2))]),
-    [],
-    ...rows.cashflow.map(row => [row.label, ...model.map(item => (item[row.key!] as number).toFixed(2))]),
+  const exportModel = () => downloadXlsx('中科曙光_五年三表及DCF估值模型.xlsx', [
+    { name: '模型说明', rows: [
+      ['AlphaWave估值模型', '中科曙光 603019.SH'],
+      ['模型情景', scenarioLabels[scenario]],
+      ['历史基准来源', historicalAnchor.source],
+      ['历史基准复核时间', historicalAnchor.reviewedAt],
+      ['预测期', '2026E–2030E'],
+      ['单位', '人民币亿元，除每股指标和比率外'],
+      ['免责声明', '模型用于研究方法展示，不构成投资建议'],
+    ] },
+    { name: '关键假设', rows: [
+      ['假设', '数值'],
+      ...pctFields.map(field => [field.label, assumptions[field.key] * 100] as Array<string | number>),
+      ['折旧摊销率', assumptions.daPct * 100], ['所得税率', assumptions.taxRate * 100],
+      ['WACC', assumptions.wacc * 100], ['永续增长率', assumptions.terminalGrowth * 100],
+      ['总股本（亿股）', assumptions.shares], ['净债务（亿元）', assumptions.netDebt],
+    ] },
+    { name: '利润表', rows: [
+      ['项目', ...model.map(item => item.year)],
+      ...rows.income.map(row => [row.label, ...model.map(item => row.ratio ? (item[row.key!] as number) * 100 : item[row.key!] as number)]),
+    ] },
+    { name: '资产负债表', rows: [
+      ['项目', ...model.map(item => item.year)],
+      ...rows.balance.map(row => [row.label, ...model.map(item => item[row.key!] as number)]),
+    ] },
+    { name: '现金流量表', rows: [
+      ['项目', ...model.map(item => item.year)],
+      ...rows.cashflow.map(row => [row.label, ...model.map(item => item[row.key!] as number)]),
+    ] },
+    { name: 'DCF估值', rows: [
+      ['项目', ...model.map(item => item.year)],
+      ['FCFF', ...model.map(item => item.fcff)],
+      ['FCFF现值', ...dcf.discountedFcff],
+      [],
+      ['预测期FCFF现值', dcf.discountedFcff.reduce((sum, value) => sum + value, 0)],
+      ['终值现值', dcf.discountedTerminalValue],
+      ['企业价值', dcf.enterpriseValue],
+      ['净债务', assumptions.netDebt],
+      ['股权价值', dcf.equityValue],
+      ['每股价值（元）', dcf.pricePerShare],
+      ['终值占比', dcf.terminalValuePct * 100],
+    ] },
   ]);
 
   return <div className="mx-auto max-w-[1580px] space-y-4">
     <header className="flex flex-col gap-3 border-b border-t-border pb-4 xl:flex-row xl:items-end xl:justify-between">
       <div><div className="flex items-center gap-2 text-xs text-t-textDim"><Calculator className="h-4 w-4 text-t-cyan" />Operating Model · 中科曙光 603019.SH</div><h1 className="mt-2 text-2xl font-semibold text-t-textBright">经营驱动与三表预测模型</h1><p className="mt-2 text-sm text-t-textDim">2022A–2024A历史数据、2025A*业绩快报与2026E–2030E预测；所有估值和行研指标引用同一套模型结果。</p></div>
-      <div className="flex flex-wrap gap-2"><button onClick={resetModel} className="inline-flex items-center gap-2 rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text"><RotateCcw className="h-3.5 w-3.5" />重置模型</button><button onClick={exportModel} className="inline-flex items-center gap-2 rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950"><Download className="h-3.5 w-3.5" />导出三表模型</button></div>
+      <div className="flex flex-wrap gap-2"><button onClick={resetModel} className="inline-flex items-center gap-2 rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text"><RotateCcw className="h-3.5 w-3.5" />重置模型</button><button onClick={exportModel} className="inline-flex items-center gap-2 rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950"><Download className="h-3.5 w-3.5" />导出Excel模型</button></div>
     </header>
 
     <section className="flex flex-col gap-3 rounded-lg border border-t-border bg-t-panel p-3 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-2"><span className="text-xs text-t-textDim">模型情景</span>{(['bear', 'base', 'bull'] as const).map(item => <button key={item} onClick={() => setScenario(item)} className={`rounded-md px-3 py-1.5 text-xs ${scenario === item ? 'bg-t-cyan text-slate-950' : 'border border-t-border text-t-textDim hover:text-t-text'}`}>{scenarioLabels[item]}</button>)}</div><div className="flex flex-wrap items-center gap-3 text-[11px] text-t-textDim"><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-t-textDim" />2022A–2024A 已披露</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-t-yellow" />2025A* 业绩快报</span><span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-t-cyan" />2026E–2030E 模型预测</span></div></section>

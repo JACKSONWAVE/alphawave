@@ -80,3 +80,21 @@ body > a[style*="bottom"] {
 [style*="position:fixed"][style*="bottom:0"] {
   display: none !important;
 }
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body { background: white !important; }
+  body * { visibility: hidden !important; }
+  .research-report,
+  .research-report * { visibility: visible !important; }
+  .research-report {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .print-hide { display: none !important; }
+  .report-page-break { break-before: page; }
+}

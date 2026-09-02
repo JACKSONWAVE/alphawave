@@ -29,6 +29,7 @@ AlphaWave 是一个将个人交易终端与专业估值、行研建模分开的�
 | `/capital/comparables` | 上市可比公司筛选与相对估值 |
 | `/capital/research` | 中科曙光Equity Research案例 |
 | `/capital/assistant` | 财报提取、人工复核与模型解释Agent |
+| `/capital/report` | 可打印并另存PDF的公司研究报告 |
 | `/capital/versions` | Bear / Base / Bull情景分析 |
 
 ## 数据口径

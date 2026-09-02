@@ -45,6 +45,7 @@ export default function CompanyResearch() {
           <p className="mt-2 max-w-3xl text-sm text-t-textDim">从行业规模与景气指标出发，落到公司业务拆分、盈利预测、估值结论和风险判断。</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={()=>navigate('/capital/report')} className="rounded-md border border-t-cyan/40 bg-t-cyan/5 px-3 py-2 text-xs text-t-cyan">生成研究报告</button>
           <button onClick={()=>navigate('/capital/assistant')} className="rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text hover:border-t-cyan/40">打开Research Agent</button>
           <button onClick={()=>navigate('/capital/model')} className="rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-text hover:border-t-cyan/40">查看三表模型</button>
           <button onClick={()=>navigate('/capital/valuation')} className="rounded-md bg-t-cyan px-3 py-2 text-xs font-medium text-slate-950">查看估值分析</button>
