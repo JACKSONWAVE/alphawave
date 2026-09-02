@@ -5,8 +5,8 @@ import { useResearchModel } from '../context/ResearchModelContext';
 const labels: Record<ModelScenario,string>={bear:'Bear Case',base:'Base Case',bull:'Bull Case'};
 
 export default function ModelVersions(){
-  const {scenario,setScenario}=useResearchModel();
-  const cases=(['bear','base','bull'] as ModelScenario[]).map(key=>({key,assumptions:scenarioPresets[key],dcf:calculateResearchDcf(scenarioPresets[key])}));
+  const {scenario,historicalAnchor,setScenario}=useResearchModel();
+  const cases=(['bear','base','bull'] as ModelScenario[]).map(key=>({key,assumptions:scenarioPresets[key],dcf:calculateResearchDcf(scenarioPresets[key],historicalAnchor)}));
   const base=cases[1];
   return <div className="mx-auto max-w-[1350px] space-y-4">
     <header className="flex flex-col gap-3 border-b border-t-border pb-4 lg:flex-row lg:items-end lg:justify-between"><div><div className="flex items-center gap-2 text-xs text-t-textDim"><SlidersHorizontal className="h-4 w-4 text-t-cyan" />Scenario Lab · 中科曙光</div><h1 className="mt-2 text-2xl font-semibold text-t-textBright">Bear / Base / Bull情景分析</h1><p className="mt-2 text-sm text-t-textDim">比较经营驱动、盈利预测和DCF目标价变化，识别估值结论最敏感的假设。</p></div><div className="rounded-md border border-t-border bg-t-panel px-3 py-2 text-xs text-t-textDim">当前应用：<strong className="ml-1 text-t-cyan">{labels[scenario]}</strong></div></header>

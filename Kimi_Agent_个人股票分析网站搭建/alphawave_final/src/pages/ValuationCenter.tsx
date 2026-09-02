@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Calculator, ChevronDown, Download, RotateCcw, Scale, SlidersHorizontal } from 'lucide-react';
 import { comparableCompanies, median } from '../data/advisoryModel';
-import { calculateResearchDcf, calculateWaccBuild } from '../data/researchModel';
+import { calculateResearchDcf as calculateResearchDcfBase, calculateWaccBuild, type OperatingAssumptions } from '../data/researchModel';
 import { useResearchModel } from '../context/ResearchModelContext';
 import { downloadCsv } from '../utils/download';
 
 const scenarioLabels = { bear: 'Bear', base: 'Base', bull: 'Bull' } as const;
 
 export default function ValuationCenter() {
-  const { assumptions, scenario, model, dcf, updateAssumption, setScenario, resetModel } = useResearchModel();
+  const { assumptions, scenario, historicalAnchor, model, dcf, updateAssumption, setScenario, resetModel } = useResearchModel();
+  const calculateResearchDcf = (nextAssumptions: OperatingAssumptions) => calculateResearchDcfBase(nextAssumptions, historicalAnchor);
   const [showFormula, setShowFormula] = useState(false);
   const [selectedSensitivity, setSelectedSensitivity] = useState<{wacc:number;growth:number}|null>(null);
   const selectedComps = comparableCompanies.filter(item => item.selected && item.code !== '603019.SH');
