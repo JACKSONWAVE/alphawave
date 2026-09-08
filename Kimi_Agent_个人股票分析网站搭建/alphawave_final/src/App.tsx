@@ -21,6 +21,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const OperatingModel = lazy(() => import('./pages/OperatingModel'));
 const ResearchAssistant = lazy(() => import('./pages/ResearchAgent'));
 const ResearchReport = lazy(() => import('./pages/ResearchReport'));
+const IpoValuation = lazy(() => import('./pages/IpoValuation'));
 
 function App() {
   return (
@@ -44,6 +45,7 @@ function App() {
           <Route path="/capital/coverage" element={<Navigate to="/capital/model" replace />} />
           <Route path="/capital/valuation" element={<ValuationCenter />} />
           <Route path="/capital/comparables" element={<ComparableCompanies />} />
+          <Route path="/capital/ipo" element={<IpoValuation />} />
           <Route path="/capital/versions" element={<ModelVersions />} />
           <Route path="/capital/diligence" element={<Navigate to="/capital/model" replace />} />
           <Route path="/capital/intel" element={<Navigate to="/capital/research" replace />} />

@@ -7,11 +7,17 @@ export type OperatingAssumptions = {
   servicesGrossMargin: number;
   rdPct: number;
   sgaPct: number;
-  daPct: number;
-  capexPct: number;
-  arPct: number;
-  inventoryPct: number;
-  apPct: number;
+  arDays: number;
+  inventoryDays: number;
+  apDays: number;
+  maintenanceCapexPct: number;
+  growthCapexPct: number;
+  usefulLife: number;
+  debtRepaymentPct: number;
+  preTaxDebtCost: number;
+  cashYield: number;
+  minCash: number;
+  dividendPayout: number;
   taxRate: number;
   wacc: number;
   terminalGrowth: number;
@@ -37,7 +43,7 @@ export const defaultHistoricalAnchor: HistoricalAnchor = {
   itRevenue: 117.06,
   servicesRevenue: 13.95,
   source: '2024年年度报告',
-  reviewedAt: '示例基准',
+  reviewedAt: '已载入基准',
 };
 
 export type ModelStartingPoint = {
@@ -80,6 +86,8 @@ export type ModelYear = {
   depreciation: number;
   ebit: number;
   interestIncome: number;
+  interestExpense: number;
+  netInterest: number;
   pretaxIncome: number;
   tax: number;
   netIncome: number;
@@ -91,6 +99,12 @@ export type ModelYear = {
   otherAssets: number;
   totalAssets: number;
   accountsPayable: number;
+  openingPpe: number;
+  maintenanceCapex: number;
+  growthCapex: number;
+  openingDebt: number;
+  debtRepayment: number;
+  newBorrowing: number;
   debt: number;
   otherLiabilities: number;
   totalLiabilities: number;
@@ -131,11 +145,17 @@ export const defaultOperatingAssumptions: OperatingAssumptions = {
   servicesGrossMargin: 0.41,
   rdPct: 0.093,
   sgaPct: 0.083,
-  daPct: 0.032,
-  capexPct: 0.055,
-  arPct: 0.40,
-  inventoryPct: 0.33,
-  apPct: 0.53,
+  arDays: 146,
+  inventoryDays: 168,
+  apDays: 193,
+  maintenanceCapexPct: 0.03,
+  growthCapexPct: 0.025,
+  usefulLife: 8,
+  debtRepaymentPct: 0.12,
+  preTaxDebtCost: 0.034,
+  cashYield: 0.015,
+  minCash: 55,
+  dividendPayout: 0.20,
   taxRate: 0.18,
   wacc: 0.087,
   terminalGrowth: 0.025,
@@ -160,9 +180,9 @@ export function calculateWaccBuild(taxRate: number) {
 }
 
 export const scenarioPresets: Record<ModelScenario, OperatingAssumptions> = {
-  bear: { ...defaultOperatingAssumptions, itGrowth: 0.09, servicesGrowth: 0.12, itGrossMargin: 0.265, servicesGrossMargin: 0.38, rdPct: 0.098, wacc: 0.097, terminalGrowth: 0.02 },
+  bear: { ...defaultOperatingAssumptions, itGrowth: 0.09, servicesGrowth: 0.12, itGrossMargin: 0.265, servicesGrossMargin: 0.38, rdPct: 0.098, arDays: 160, inventoryDays: 185, apDays: 180, growthCapexPct: 0.03, debtRepaymentPct: 0.08, wacc: 0.097, terminalGrowth: 0.02 },
   base: defaultOperatingAssumptions,
-  bull: { ...defaultOperatingAssumptions, itGrowth: 0.23, servicesGrowth: 0.28, itGrossMargin: 0.302, servicesGrossMargin: 0.44, rdPct: 0.09, wacc: 0.082, terminalGrowth: 0.03 },
+  bull: { ...defaultOperatingAssumptions, itGrowth: 0.23, servicesGrowth: 0.28, itGrossMargin: 0.302, servicesGrossMargin: 0.44, rdPct: 0.09, arDays: 135, inventoryDays: 150, apDays: 200, growthCapexPct: 0.035, debtRepaymentPct: 0.18, wacc: 0.082, terminalGrowth: 0.03 },
 };
 
 const defaultOpeningBalance = {
@@ -181,10 +201,11 @@ export function buildResearchModel(assumptions: OperatingAssumptions, anchor: Hi
   const startingPoint = deriveModelStartingPoint(anchor);
   const assetScale = startingPoint.totalAssets / 411.83;
   const openingBalance = {
-    cash: defaultOpeningBalance.cash * assetScale,
+    cash: defaultOpeningBalance.debt * assetScale - assumptions.netDebt,
     accountsReceivable: defaultOpeningBalance.accountsReceivable * assetScale,
     inventory: defaultOpeningBalance.inventory * assetScale,
     ppe: defaultOpeningBalance.ppe * assetScale,
+    otherAssets: defaultOpeningBalance.otherAssets * assetScale,
     accountsPayable: defaultOpeningBalance.accountsPayable * assetScale,
     debt: defaultOpeningBalance.debt * assetScale,
     equity: startingPoint.equity,
@@ -198,6 +219,7 @@ export function buildResearchModel(assumptions: OperatingAssumptions, anchor: Hi
   let previousNwc = openingBalance.accountsReceivable + openingBalance.inventory - openingBalance.accountsPayable;
   let cash = openingBalance.cash;
   let ppe = openingBalance.ppe;
+  let debt = openingBalance.debt;
   let equity = openingBalance.equity;
 
   for (let index = 0;index < 5;index += 1) {
@@ -213,31 +235,42 @@ export function buildResearchModel(assumptions: OperatingAssumptions, anchor: Hi
     const cogs = revenue - grossProfit;
     const rd = revenue * Math.max(0.082, assumptions.rdPct - index * 0.0015);
     const sga = revenue * Math.max(0.074, assumptions.sgaPct - index * 0.001);
-    const depreciation = revenue * assumptions.daPct;
-    const ebit = grossProfit - rd - sga;
-    const ebitda = ebit + depreciation;
-    const interestIncome = Math.max(0, cash - openingBalance.debt) * 0.015 + revenue * 0.02;
-    const pretaxIncome = ebit + interestIncome;
-    const tax = pretaxIncome * assumptions.taxRate;
+    const openingPpe = ppe;
+    const maintenanceCapex = revenue * assumptions.maintenanceCapexPct;
+    const growthCapex = revenue * assumptions.growthCapexPct;
+    const capex = maintenanceCapex + growthCapex;
+    const depreciation = Math.min(openingPpe + capex, openingPpe / assumptions.usefulLife + capex / assumptions.usefulLife / 2);
+    const ebitda = grossProfit - rd - sga;
+    const ebit = ebitda - depreciation;
+    const openingDebt = debt;
+    const interestIncome = cash * assumptions.cashYield;
+    const scheduledDebtRepayment = openingDebt * assumptions.debtRepaymentPct;
+    const interestExpense = (openingDebt - scheduledDebtRepayment / 2) * assumptions.preTaxDebtCost;
+    const netInterest = interestIncome - interestExpense;
+    const pretaxIncome = ebit + netInterest;
+    const tax = Math.max(0, pretaxIncome * assumptions.taxRate);
     const netIncome = pretaxIncome - tax;
-    const accountsReceivable = revenue * assumptions.arPct;
-    const inventory = revenue * assumptions.inventoryPct;
-    const accountsPayable = cogs * assumptions.apPct;
+    const accountsReceivable = revenue * assumptions.arDays / 365;
+    const inventory = cogs * assumptions.inventoryDays / 365;
+    const accountsPayable = cogs * assumptions.apDays / 365;
     const nwc = accountsReceivable + inventory - accountsPayable;
     const changeNwc = nwc - previousNwc;
-    const capex = revenue * assumptions.capexPct;
     const cfo = netIncome + depreciation - changeNwc;
-    const dividends = netIncome * 0.2;
+    const dividends = Math.max(0, netIncome * assumptions.dividendPayout);
     const cfi = -capex;
-    const cff = -dividends;
+    const cashBeforeDebtService = cash + cfo + cfi - dividends;
+    const debtRepayment = Math.min(openingDebt, scheduledDebtRepayment, Math.max(0, cashBeforeDebtService - assumptions.minCash));
+    const newBorrowing = Math.max(0, assumptions.minCash - cashBeforeDebtService);
+    const cff = newBorrowing - debtRepayment - dividends;
     const netChangeCash = cfo + cfi + cff;
     const previousCash = cash;
     cash += netChangeCash;
     ppe += capex - depreciation;
+    debt = openingDebt - debtRepayment + newBorrowing;
     equity += netIncome - dividends;
-    const totalLiabilities = accountsPayable + openingBalance.debt + openingBalance.otherLiabilities;
+    const totalLiabilities = accountsPayable + debt + openingBalance.otherLiabilities;
     const totalLiabilitiesAndEquity = totalLiabilities + equity;
-    const otherAssets = totalLiabilitiesAndEquity - cash - accountsReceivable - inventory - ppe;
+    const otherAssets = openingBalance.otherAssets;
     const totalAssets = cash + accountsReceivable + inventory + ppe + otherAssets;
     const fcff = ebit * (1 - assumptions.taxRate) + depreciation - capex - changeNwc;
     const revenueCheck = revenue - itRevenue - servicesRevenue;
@@ -247,9 +280,10 @@ export function buildResearchModel(assumptions: OperatingAssumptions, anchor: Hi
     model.push({
       year: `${2026 + index}E`, forecast: true, itRevenue, servicesRevenue, revenue, growth, cogs,
       grossProfit, grossMargin: grossProfit / revenue, rd, sga, ebitda, depreciation, ebit,
-      interestIncome, pretaxIncome, tax, netIncome, eps: netIncome / assumptions.shares,
+      interestIncome, interestExpense, netInterest, pretaxIncome, tax, netIncome, eps: netIncome / assumptions.shares,
       cash, accountsReceivable, inventory, ppe, otherAssets, totalAssets,
-      accountsPayable, debt: openingBalance.debt, otherLiabilities: openingBalance.otherLiabilities,
+      accountsPayable, openingPpe, maintenanceCapex, growthCapex, openingDebt, debtRepayment, newBorrowing,
+      debt, otherLiabilities: openingBalance.otherLiabilities,
       totalLiabilities, equity, totalLiabilitiesAndEquity,
       balanceCheck: totalAssets - totalLiabilitiesAndEquity, nwc, changeNwc, cfo, capex, cfi,
       dividends, cff, netChangeCash, fcff, revenueCheck, cashFlowCheck, fcffCheck,

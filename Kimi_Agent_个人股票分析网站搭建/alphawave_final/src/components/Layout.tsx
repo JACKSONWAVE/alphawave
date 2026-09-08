@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BarChart3, Star, Settings, Search, Newspaper, BriefcaseBusiness, Scale, WalletCards, SlidersHorizontal, ArrowLeftRight, Bell, ChevronDown, TableProperties, Bot, FileText } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Star, Settings, Search, Newspaper, BriefcaseBusiness, Scale, WalletCards, SlidersHorizontal, ArrowLeftRight, Bell, ChevronDown, TableProperties, Bot, FileText, Landmark } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { coverageCompanies } from '../data/advisoryModel';
@@ -18,6 +18,7 @@ const capitalNav = [
   { to: '/capital', icon: LayoutDashboard, label: 'Model Hub' },
   { to: '/capital/model', icon: TableProperties, label: '经营驱动与三表' },
   { to: '/capital/valuation', icon: Scale, label: 'Valuation Lab' },
+  { to: '/capital/ipo', icon: Landmark, label: 'IPO融资估值' },
   { to: '/capital/comparables', icon: BriefcaseBusiness, label: '可比公司' },
   { to: '/capital/research', icon: BarChart3, label: 'Equity Research' },
   { to: '/capital/assistant', icon: Bot, label: 'Research Agent' },
@@ -118,7 +119,7 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="flex items-center justify-between px-3 sm:px-4 h-11 border-b border-t-border bg-t-panel">
           <div className="relative flex items-center gap-2">
-            <button onClick={() => navigate(isCapital ? '/' : '/capital')} className="mr-2 whitespace-nowrap text-xs font-semibold text-t-textBright lg:hidden">{isCapital ? '投行工作台' : '交易终端'} ⇄</button>
+            <button onClick={() => navigate(isCapital ? '/' : '/capital')} className="mr-2 whitespace-nowrap text-xs font-semibold text-t-textBright lg:hidden">{isCapital ? '估值研究' : '交易终端'} ⇄</button>
             <Search className="w-3.5 h-3.5 text-t-textDim" />
             <input
               type="text"
