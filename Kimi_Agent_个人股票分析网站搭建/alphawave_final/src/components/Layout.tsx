@@ -5,7 +5,7 @@ import { Outlet } from 'react-router-dom';
 import { coverageCompanies } from '../data/advisoryModel';
 
 const tradingNav = [
-  { to: '/', icon: LayoutDashboard, label: '交易总览' },
+  { to: '/trading', icon: LayoutDashboard, label: '交易总览' },
   { to: '/analysis', icon: BarChart3, label: '个股分析' },
   { to: '/watchlist', icon: Star, label: '自选股' },
   { to: '/portfolio', icon: WalletCards, label: '投资组合' },
@@ -73,7 +73,7 @@ export default function Layout() {
         {!collapsed && (
           <div className="border-b border-t-border p-2">
             <button
-              onClick={() => navigate(isCapital ? '/' : '/capital')}
+              onClick={() => navigate(isCapital ? '/trading' : '/capital')}
               className="flex w-full items-center justify-between rounded-md border border-t-border bg-white/[0.02] px-3 py-2 text-left hover:border-t-cyan/40"
             >
               <span>
@@ -86,7 +86,7 @@ export default function Layout() {
         )}
         <nav className="flex-1 py-2 space-y-0.5">
           {navItems.map(item => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/' || item.to === '/capital'} className={({ isActive }) =>
+            <NavLink key={item.to} to={item.to} end={item.to === '/trading' || item.to === '/capital'} className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2 mx-1.5 rounded-md text-sm transition-colors relative ${isActive ? 'bg-t-blue/15 text-t-blue border-l-2 border-t-blue' : 'text-t-textDim hover:text-t-text hover:bg-t-panelHover'}`
             }>
               <item.icon className="w-4 h-4 flex-shrink-0" />
@@ -119,7 +119,7 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="flex items-center justify-between px-3 sm:px-4 h-11 border-b border-t-border bg-t-panel">
           <div className="relative flex items-center gap-2">
-            <button onClick={() => navigate(isCapital ? '/' : '/capital')} className="mr-2 whitespace-nowrap text-xs font-semibold text-t-textBright lg:hidden">{isCapital ? '估值研究' : '交易终端'} ⇄</button>
+            <button onClick={() => navigate(isCapital ? '/trading' : '/capital')} className="mr-2 whitespace-nowrap text-xs font-semibold text-t-textBright lg:hidden">{isCapital ? '估值研究' : '交易终端'} ⇄</button>
             <Search className="w-3.5 h-3.5 text-t-textDim" />
             <input
               type="text"
@@ -158,7 +158,7 @@ export default function Layout() {
         </header>
         <nav className="flex gap-1 overflow-x-auto border-b border-t-border bg-t-panel px-2 py-1.5 lg:hidden scrollbar-thin">
           {navItems.map(item => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/' || item.to === '/capital'} className={({ isActive }) =>
+            <NavLink key={item.to} to={item.to} end={item.to === '/trading' || item.to === '/capital'} className={({ isActive }) =>
               `flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-2 text-[11px] ${isActive ? 'bg-t-cyan/10 text-t-cyan' : 'text-t-textDim'}`
             }>
               <item.icon className="h-3.5 w-3.5" />{item.label}

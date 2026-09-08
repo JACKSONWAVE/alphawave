@@ -28,7 +28,8 @@ function App() {
     <ResearchModelProvider><Suspense fallback={<div className="flex h-screen items-center justify-center bg-t-bg text-sm text-t-textDim">正在载入研究工作台…</div>}>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Navigate to="/capital" replace />} />
+          <Route path="/trading" element={<Dashboard />} />
           <Route path="/analysis" element={<Analysis />} />
           <Route path="/watchlist" element={<Watchlist />} />
           <Route path="/portfolio" element={<Portfolio />} />
@@ -56,7 +57,7 @@ function App() {
           <Route path="/comparables" element={<Navigate to="/capital/comparables" replace />} />
           <Route path="/versions" element={<Navigate to="/capital/versions" replace />} />
           <Route path="/diligence" element={<Navigate to="/capital/diligence" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/capital" replace />} />
         </Route>
       </Routes>
     </Suspense></ResearchModelProvider>

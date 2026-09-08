@@ -22,10 +22,12 @@ AlphaWave 是一个将个人交易终端与专业估值、行研建模分开的�
 
 | 路径 | 功能 |
 | --- | --- |
-| `/` | 原个人交易终端 |
+| `/` | 默认进入估值与行研建模平台 |
+| `/trading` | 原个人交易终端（完整保留） |
 | `/capital` | 专业建模Model Hub |
 | `/capital/model` | 经营驱动与三表模型 |
 | `/capital/valuation` | DCF、SOTP、估值足球场及敏感性 |
+| `/capital/ipo` | IPO融资估值、发行测算与股权稀释 |
 | `/capital/comparables` | 上市可比公司筛选与相对估值 |
 | `/capital/research` | 中科曙光Equity Research案例 |
 | `/capital/assistant` | 财报提取、人工复核与模型解释Agent |
